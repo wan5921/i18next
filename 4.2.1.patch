@@ -1,0 +1,27 @@
+diff --git a/src/PluralResolver.js b/src/PluralResolver.js
+index 8765978..40739b9 100644
+--- a/src/PluralResolver.js
++++ b/src/PluralResolver.js
+@@ -71,6 +71,7 @@ class PluralResolver {
+   }
+ 
+   getSuffixes(code, options = {}) {
++    console.log('[PluralResolver] getSuffixes called', { code, options });
+     let rule = this.getRule(code, options);
+     if (!rule) rule = this.getRule('dev', options);
+     if (!rule) return [];
+@@ -81,10 +82,13 @@ class PluralResolver {
+   }
+ 
+   getSuffix(code, count, options = {}) {
++    console.log('[PluralResolver] getSuffix called', { code, count, options });
+     const rule = this.getRule(code, options);
+ 
+     if (rule) {
+-      return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
++      const suffix = `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
++      console.log('[PluralResolver] getSuffix returning', suffix);
++      return suffix;
+     }
+ 
+     this.logger.warn(`no plural rule found for: ${code}`);
