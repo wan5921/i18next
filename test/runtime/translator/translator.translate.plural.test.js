@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vitest } from 'vitest';
 import Translator from '../../../src/Translator';
 import ResourceStore from '../../../src/ResourceStore.js';
 import LanguageUtils from '../../../src/LanguageUtils';
 import PluralResolver from '../../../src/PluralResolver';
 import Interpolator from '../../../src/Interpolator';
+import PostProcessor from '../../../src/postProcessor';
 
 describe('Translator', () => {
   describe('translate() with plural', () => {
@@ -58,7 +59,7 @@ describe('Translator', () => {
           translation: {
             test: 'test_it',
             test_other: 'tests_it_other',
-            test_many: 'tests_it_many', // ordinal
+            test_many: 'tests_it_many',
           },
         },
       });
@@ -80,6 +81,10 @@ describe('Translator', () => {
         },
       );
       t.changeLanguage('en');
+    });
+
+    afterEach(() => {
+      vitest.restoreAllMocks();
     });
 
     const tests = [
@@ -119,23 +124,23 @@ describe('Translator', () => {
       { args: ['translation:test', { count: 101, lng: 'ar' }], expected: 'tests_ar_other' },
       {
         args: ['translation:test', { count: 0, lng: 'ar', ordinal: true }],
-        expected: 'tests_ar_other', // fallback
+        expected: 'tests_ar_other',
       },
       {
         args: ['translation:test', { count: 1, lng: 'ar', ordinal: true }],
-        expected: 'tests_ar_other', // fallback
+        expected: 'tests_ar_other',
       },
       {
         args: ['translation:test', { count: 2, lng: 'ar', ordinal: true }],
-        expected: 'tests_ar_other', // fallback
+        expected: 'tests_ar_other',
       },
       {
         args: ['translation:test', { count: 3, lng: 'ar', ordinal: true }],
-        expected: 'tests_ar_other', // fallback
+        expected: 'tests_ar_other',
       },
       {
         args: ['translation:test', { count: 15, lng: 'ar', ordinal: true }],
-        expected: 'tests_ar_other', // fallback
+        expected: 'tests_ar_other',
       },
       { args: ['translation:test', { count: 0, lng: 'it' }], expected: 'tests_it_other' },
       { args: ['translation:test', { count: 1, lng: 'it' }], expected: 'test_it' },
@@ -143,19 +148,19 @@ describe('Translator', () => {
       { args: ['translation:test', { count: 11, lng: 'it' }], expected: 'tests_it_other' },
       {
         args: ['translation:test', { count: 0, lng: 'it', ordinal: true }],
-        expected: 'tests_it_other', // fallback
+        expected: 'tests_it_other',
       },
       {
         args: ['translation:test', { count: 1, lng: 'it', ordinal: true }],
-        expected: 'tests_it_other', // fallback
+        expected: 'tests_it_other',
       },
       {
         args: ['translation:test', { count: 2, lng: 'it', ordinal: true }],
-        expected: 'tests_it_other', // fallback
+        expected: 'tests_it_other',
       },
       {
         args: ['translation:test', { count: 11, lng: 'it', ordinal: true }],
-        expected: 'tests_it_many', // fallback
+        expected: 'tests_it_many',
       },
       {
         args: ['translation:oTest', { count: 1, lng: 'en', ordinal: true }],
@@ -179,6 +184,53 @@ describe('Translator', () => {
       it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {
         expect(t.translate.apply(t, test.args)).toEqual(test.expected);
       });
+    });
+
+    it('passes the resolved plural value into postProcess without overriding the plural selection', () => {
+      const process = vitest.fn((value) => value);
+      PostProcessor.addPostProcessor({
+        name: 'pluralPostProcessIdentity',
+        process,
+      });
+
+      expect(
+        t.translate('translation:test', {
+          lng: 'ar',
+          count: 3,
+          postProcess: 'pluralPostProcessIdentity',
+        }),
+      ).toEqual('tests_ar_few');
+      expect(process).toHaveBeenCalledWith(
+        'tests_ar_few',
+        'translation:test',
+        expect.objectContaining({
+          lng: 'ar',
+          count: 3,
+          postProcess: 'pluralPostProcessIdentity',
+        }),
+        t,
+      );
+    });
+
+    it('logs language and count through the translate plural call chain when enabled', () => {
+      const logSpy = vitest.spyOn(console, 'log').mockImplementation(() => {});
+
+      expect(
+        t.translate('translation:test', {
+          lng: 'ar',
+          count: 3,
+          logPluralResolution: true,
+        }),
+      ).toEqual('tests_ar_few');
+      expect(logSpy).toHaveBeenCalledWith(
+        '[pluralResolver.getSuffix]',
+        expect.objectContaining({
+          language: 'ar',
+          count: 3,
+          pluralCategory: 'few',
+          ordinal: false,
+        }),
+      );
     });
   });
 });

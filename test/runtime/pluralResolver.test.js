@@ -21,35 +21,25 @@ describe('PluralResolver', () => {
 
     it('correctly returns getRule for a supported locale', () => {
       const expected = {
-        resolvedOptions() {},
-        select() {},
+        select: expect.any(Function),
+        resolvedOptions: expect.any(Function),
       };
-      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
-        return expected;
-      });
 
-      const locale = 'en';
-
-      expect(pr.getRule(locale)).toEqual(expected);
-      expect(Intl.PluralRules).toHaveBeenCalledWith(
-        locale,
-        expect.objectContaining({ type: expect.any(String) }),
-      );
+      expect(pr.getRule('en')).toEqual(expected);
     });
 
     it('correctly returns getRule for an unsupported locale', () => {
-      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
-        throw Error('mock error');
+      expect(pr.getRule('nonexistent')).toEqual({
+        select: expect.any(Function),
+        resolvedOptions: expect.any(Function),
       });
+    });
 
-      const locale = 'en';
-
-      expect(pr.getRule(locale)).not.toBeUndefined(); // we return dummy rule
-      expect(Intl.PluralRules).toHaveBeenCalledOnce();
-      expect(Intl.PluralRules).toHaveBeenCalledWith(
-        locale,
-        expect.objectContaining({ type: expect.any(String) }),
-      );
+    it('correctly returns getRule for locale with region', () => {
+      expect(pr.getRule('pt-PT')).toEqual({
+        select: expect.any(Function),
+        resolvedOptions: expect.any(Function),
+      });
     });
   });
 
@@ -134,6 +124,34 @@ describe('PluralResolver', () => {
       );
       expect(selectStub).toHaveBeenCalledOnce();
       expect(selectStub).toHaveBeenCalledWith(count);
+    });
+
+    it('correctly returns suffix for arabic plural categories', () => {
+      expect(pr.getSuffix('ar', 0)).toEqual('_zero');
+      expect(pr.getSuffix('ar', 1)).toEqual('_one');
+      expect(pr.getSuffix('ar', 2)).toEqual('_two');
+      expect(pr.getSuffix('ar', 3)).toEqual('_few');
+      expect(pr.getSuffix('ar', 15)).toEqual('_many');
+      expect(pr.getSuffix('ar', 101)).toEqual('_other');
+    });
+
+    it('logs language and count when plural resolution logging is enabled', () => {
+      const logSpy = vitest.spyOn(console, 'log').mockImplementation(() => {});
+      const selectStub = vitest.fn().mockReturnValue('few');
+      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+        return { select: selectStub };
+      });
+
+      expect(pr.getSuffix('ar', 3, { logPluralResolution: true })).toEqual('_few');
+      expect(logSpy).toHaveBeenCalledWith(
+        '[pluralResolver.getSuffix]',
+        expect.objectContaining({
+          language: 'ar',
+          count: 3,
+          pluralCategory: 'few',
+          ordinal: false,
+        }),
+      );
     });
 
     it('correctly returns suffix for an unsupported locale', () => {

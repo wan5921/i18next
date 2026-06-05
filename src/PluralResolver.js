@@ -1,5 +1,5 @@
 import baseLogger from './logger.js';
-import { getCleanedCode } from './utils.js'
+import { getCleanedCode } from './utils.js';
 
 const suffixesOrder = {
   zero: 0,
@@ -11,10 +11,10 @@ const suffixesOrder = {
 };
 
 const dummyRule = {
-  select: (count) => count === 1 ? 'one' : 'other',
+  select: (count) => (count === 1 ? 'one' : 'other'),
   resolvedOptions: () => ({
-    pluralCategories: ['one', 'other']
-  })
+    pluralCategories: ['one', 'other'],
+  }),
 };
 
 class PluralResolver {
@@ -24,8 +24,6 @@ class PluralResolver {
 
     this.logger = baseLogger.create('pluralResolver');
 
-    // Cache calls to Intl.PluralRules, since repeated calls can be slow in runtimes like React Native
-    // and the memory usage difference is negligible
     this.pluralRulesCache = {};
   }
 
@@ -77,18 +75,30 @@ class PluralResolver {
 
     return rule.resolvedOptions().pluralCategories
       .sort((pluralCategory1, pluralCategory2) => suffixesOrder[pluralCategory1] - suffixesOrder[pluralCategory2])
-      .map(pluralCategory => `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`);
+      .map((pluralCategory) => `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`);
   }
 
   getSuffix(code, count, options = {}) {
-    const rule = this.getRule(code, options);
+    let rule = this.getRule(code, options);
+    if (!rule) rule = this.getRule('dev', options);
 
-    if (rule) {
-      return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
+    if (!rule) {
+      this.logger.warn(`no plural rule found for: ${code}`);
+      return '';
     }
 
-    this.logger.warn(`no plural rule found for: ${code}`);
-    return this.getSuffix('dev', count, options);
+    const pluralCategory = rule.select(count);
+
+    if (options.logPluralResolution || this.options.logPluralResolution) {
+      console.log('[pluralResolver.getSuffix]', {
+        language: code,
+        count,
+        pluralCategory,
+        ordinal: !!options.ordinal,
+      });
+    }
+
+    return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`;
   }
 }
 
