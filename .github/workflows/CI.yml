@@ -3,27 +3,28 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
-    # types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - '**'
 
 jobs:
-  codeQuality:
-    name: Check code quality (lint and format)
+  test-and-build:
+    name: Build and Test
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Format check
         run: npm run format
@@ -31,75 +32,16 @@ jobs:
       - name: Lint
         run: npm run lint
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-
-  test:
-    name: Test on node ${{ matrix.node }} and ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        node: ['24.x', '22.x', '20.x']
-        os: [ubuntu-latest]
-        # Collect coverage only for node 22 and ubuntu-latest, no need to run it twice
-        # @see https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs#expanding-or-adding-matrix-configurations
-        include:
-          - collectCoverage: true
-            node: '22.x'
-            os: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Test
-        if: ${{ !matrix.collectCoverage }}
+      - name: Run tests
         run: npm test
 
-      - name: Test with coverage
-        if: ${{ matrix.collectCoverage }}
+      - name: Run tests with coverage
         run: npm run test:coverage
 
-      - name: Coveralls
-        if: ${{ matrix.collectCoverage }}
-        uses: coverallsapp/github-action@v2
+      - name: Build project
+        run: npm run build
 
-  testTypescript:
-    name: Test typescript
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Test
-        run: npm run test:typescript
+          token: ${{ secrets.CODECOV_TOKEN }}
