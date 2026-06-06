@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import Translator from '../../../src/Translator';
 import ResourceStore from '../../../src/ResourceStore.js';
 import LanguageUtils from '../../../src/LanguageUtils';
 import PluralResolver from '../../../src/PluralResolver';
 import Interpolator from '../../../src/Interpolator';
+import postProcessor from '../../../src/postProcessor';
 
 describe('Translator', () => {
   describe('translate() with plural', () => {
@@ -61,6 +62,13 @@ describe('Translator', () => {
             test_many: 'tests_it_many', // ordinal
           },
         },
+        ru: {
+          translation: {
+            test_one: 'test_ru_one',
+            test_few: 'test_ru_few',
+            test_many: 'test_ru_many',
+          },
+        },
       });
       const lu = new LanguageUtils({ fallbackLng: 'en' });
       t = new Translator(
@@ -80,6 +88,18 @@ describe('Translator', () => {
         },
       );
       t.changeLanguage('en');
+      postProcessor.addPostProcessor({
+        name: 'few',
+        process: (value) => `${value}:pp:few`,
+      });
+      postProcessor.addPostProcessor({
+        name: 'many',
+        process: (value) => `${value}:pp:many`,
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
     });
 
     const tests = [
@@ -111,6 +131,9 @@ describe('Translator', () => {
       { args: ['translation:test', { count: 1, lng: 'ja' }], expected: 'tests_ja' },
       { args: ['translation:test', { count: 2, lng: 'ja' }], expected: 'tests_ja' },
       { args: ['translation:test', { count: 10, lng: 'ja' }], expected: 'tests_ja' },
+      { args: ['translation:test', { count: 1, lng: 'ru' }], expected: 'test_ru_one' },
+      { args: ['translation:test', { count: 2, lng: 'ru' }], expected: 'test_ru_few' },
+      { args: ['translation:test', { count: 5, lng: 'ru' }], expected: 'test_ru_many' },
       { args: ['translation:test', { count: 0, lng: 'ar' }], expected: 'tests_ar_zero' },
       { args: ['translation:test', { count: 1, lng: 'ar' }], expected: 'tests_ar_one' },
       { args: ['translation:test', { count: 2, lng: 'ar' }], expected: 'tests_ar_two' },
@@ -179,6 +202,44 @@ describe('Translator', () => {
       it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {
         expect(t.translate.apply(t, test.args)).toEqual(test.expected);
       });
+    });
+
+    it('keeps ru plural resolution when postProcess is empty', () => {
+      const getSuffixSpy = vi.spyOn(t.pluralResolver, 'getSuffix');
+
+      expect(t.translate('translation:test', { count: 2, lng: 'ru', postProcess: [] })).toEqual(
+        'test_ru_few',
+      );
+      expect(getSuffixSpy).toHaveBeenCalledOnce();
+      expect(getSuffixSpy).toHaveBeenCalledWith(
+        'ru',
+        2,
+        expect.objectContaining({ count: 2, lng: 'ru', postProcess: [] }),
+      );
+    });
+
+    it('applies conflicting postProcess names after ru few and many resolution', () => {
+      const getSuffixSpy = vi.spyOn(t.pluralResolver, 'getSuffix');
+
+      expect(t.translate('translation:test', { count: 2, lng: 'ru', postProcess: 'few' })).toEqual(
+        'test_ru_few:pp:few',
+      );
+      expect(
+        t.translate('translation:test', { count: 5, lng: 'ru', postProcess: 'many' }),
+      ).toEqual('test_ru_many:pp:many');
+      expect(getSuffixSpy).toHaveBeenCalledTimes(2);
+      expect(getSuffixSpy).toHaveBeenNthCalledWith(
+        1,
+        'ru',
+        2,
+        expect.objectContaining({ count: 2, lng: 'ru', postProcess: 'few' }),
+      );
+      expect(getSuffixSpy).toHaveBeenNthCalledWith(
+        2,
+        'ru',
+        5,
+        expect.objectContaining({ count: 5, lng: 'ru', postProcess: 'many' }),
+      );
     });
   });
 });
