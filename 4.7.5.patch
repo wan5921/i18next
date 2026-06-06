@@ -1,0 +1,76 @@
+diff --git a/.github/workflows/CI.yml b/.github/workflows/CI.yml
+index 488085e..2c6e334 100644
+--- a/.github/workflows/CI.yml
++++ b/.github/workflows/CI.yml
+@@ -3,9 +3,9 @@ name: CI
+ on:
+   push:
+     branches:
++      - main
+       - master
+   pull_request:
+-    # types: [opened, synchronize, reopened, ready_for_review]
+     branches:
+       - '**'
+ 
+@@ -23,7 +23,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Format check
+         run: npm run format
+@@ -44,7 +44,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Build
+         run: npm run build
+@@ -72,7 +72,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Test
+         if: ${{ !matrix.collectCoverage }}
+@@ -86,6 +86,12 @@ jobs:
+         if: ${{ matrix.collectCoverage }}
+         uses: coverallsapp/github-action@v2
+ 
++      - name: Upload coverage to Codecov
++        if: ${{ matrix.collectCoverage }}
++        uses: codecov/codecov-action@v4
++        with:
++          token: ${{ secrets.CODECOV_TOKEN }}
++
+   testTypescript:
+     name: Test typescript
+     runs-on: ubuntu-latest
+@@ -99,7 +105,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Test
+         run: npm run test:typescript
+diff --git a/README.md b/README.md
+index 9700a96..8d0aaf2 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # i18next: learn once - translate everywhere [![Post](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://x.com/intent/tweet?text=Awesome%20i18next:%20learn%20once%20-%20translate%20everywhere%20-%20the%20internationalization%20ecosystem%20&url=https://github.com/i18next/i18next&via=jamuhl&hashtags=i18n,javascript,dev)
+ 
+-[![CI](https://github.com/i18next/i18next/actions/workflows/CI.yml/badge.svg)](https://github.com/i18next/i18next/actions/workflows/CI.yml)
++[![CI](https://github.com/i18next/i18next/actions/workflows/ci.yml/badge.svg)](https://github.com/i18next/i18next/actions/workflows/ci.yml)
+ [![Coveralls](https://img.shields.io/coveralls/i18next/i18next/master.svg?style=flat-square)](https://coveralls.io/github/i18next/i18next)
+ [![Package Quality](https://packagequality.com/shield/i18next.svg)](https://packagequality.com/#?package=i18next)
+ [![cdnjs version](https://img.shields.io/cdnjs/v/i18next.svg?style=flat-square)](https://cdnjs.com/libraries/i18next)
