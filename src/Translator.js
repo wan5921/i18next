@@ -460,8 +460,8 @@ class Translator extends EventEmitter {
 
   resolve(keys, opt = {}) {
     let found;
-    let usedKey; // plain key
-    let exactUsedKey; // key with context / plural
+    let usedKey;
+    let exactUsedKey;
     let usedLng;
     let usedNS;
 
@@ -471,9 +471,12 @@ class Translator extends EventEmitter {
         typeof k === 'function' ? keysFromSelector(k, { ...this.options, ...opt }) : k,
       );
 
-    // forEach possible key
+    const keySeparator =
+      opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
+
     keys.forEach((k) => {
       if (this.isValidLookup(found)) return;
+
       const extracted = this.extractFromKey(k, opt);
       const key = extracted.key;
       usedKey = key;
@@ -490,6 +493,8 @@ class Translator extends EventEmitter {
       const codes = opt.lngs
         ? opt.lngs
         : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
+
+      const keyPaths = this._buildKeyPaths(key, keySeparator);
 
       namespaces.forEach((ns) => {
         if (this.isValidLookup(found)) return;
@@ -513,70 +518,83 @@ class Translator extends EventEmitter {
           if (this.isValidLookup(found)) return;
           usedLng = code;
 
-          const finalKeys = [key];
+          keyPaths.forEach((currentKey) => {
+            if (this.isValidLookup(found)) return;
 
-          if (this.i18nFormat?.addLookupKeys) {
-            this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
-          } else {
-            let pluralSuffix;
-            if (needsPluralHandling)
-              pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
-            const zeroSuffix = `${this.options.pluralSeparator}zero`;
-            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
-            // get key for plural if needed
-            if (needsPluralHandling) {
-              if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
-                finalKeys.push(
-                  key + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
-                );
-              }
-              finalKeys.push(key + pluralSuffix);
-              if (needsZeroSuffixLookup) {
-                finalKeys.push(key + zeroSuffix);
-              }
-            }
+            const finalKeys = [currentKey];
 
-            // get key for context if needed
-            if (needsContextHandling) {
-              const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
-              finalKeys.push(contextKey);
-
-              // get key for context + plural if needed
+            if (this.i18nFormat?.addLookupKeys) {
+              this.i18nFormat.addLookupKeys(finalKeys, currentKey, code, ns, opt);
+            } else {
+              let pluralSuffix;
+              if (needsPluralHandling)
+                pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
+              const zeroSuffix = `${this.options.pluralSeparator}zero`;
+              const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
               if (needsPluralHandling) {
                 if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
                   finalKeys.push(
-                    contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                    currentKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
                   );
                 }
-                finalKeys.push(contextKey + pluralSuffix);
+                finalKeys.push(currentKey + pluralSuffix);
                 if (needsZeroSuffixLookup) {
-                  finalKeys.push(contextKey + zeroSuffix);
+                  finalKeys.push(currentKey + zeroSuffix);
+                }
+              }
+
+              if (needsContextHandling) {
+                const contextKey = `${currentKey}${this.options.contextSeparator || '_'}${opt.context}`;
+                finalKeys.push(contextKey);
+                if (needsPluralHandling) {
+                  if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                    finalKeys.push(
+                      contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                    );
+                  }
+                  finalKeys.push(contextKey + pluralSuffix);
+                  if (needsZeroSuffixLookup) {
+                    finalKeys.push(contextKey + zeroSuffix);
+                  }
                 }
               }
             }
-          }
 
-          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
-          let possibleKey;
-          while ((possibleKey = finalKeys.pop())) {
-            if (!this.isValidLookup(found)) {
-              exactUsedKey = possibleKey;
-              found = this.getResource(code, ns, possibleKey, opt);
+            let possibleKey;
+            while ((possibleKey = finalKeys.pop())) {
+              if (!this.isValidLookup(found)) {
+                exactUsedKey = possibleKey;
+                found = this.getResource(code, ns, possibleKey, opt);
+              }
             }
-          }
+          });
         });
       });
     });
 
-    return { res: found, usedKey, exactUsedKey, usedLng, usedNS };
+    return {
+      res: found,
+      usedKey,
+      exactUsedKey,
+      usedLng,
+      usedNS,
+    };
+  }
+
+  _buildKeyPaths(key, keySeparator) {
+    if (!keySeparator || !isString(key) || !key.includes(keySeparator)) {
+      return [key];
+    }
+    const parts = key.split(keySeparator);
+    const paths = [key];
+    for (let i = 1; i < parts.length; i++) {
+      paths.push(parts.slice(i).join(keySeparator));
+    }
+    return paths;
   }
 
   isValidLookup(res) {
-    return (
-      res !== undefined &&
-      !(!this.options.returnNull && res === null) &&
-      !(!this.options.returnEmptyString && res === '')
-    );
+    return res !== undefined && res !== null;
   }
 
   getResource(code, ns, key, options = {}) {

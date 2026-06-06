@@ -1,0 +1,288 @@
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..0c78a1c 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -460,8 +460,8 @@ class Translator extends EventEmitter {
+ 
+   resolve(keys, opt = {}) {
+     let found;
+-    let usedKey; // plain key
+-    let exactUsedKey; // key with context / plural
++    let usedKey;
++    let exactUsedKey;
+     let usedLng;
+     let usedNS;
+ 
+@@ -471,9 +471,12 @@ class Translator extends EventEmitter {
+         typeof k === 'function' ? keysFromSelector(k, { ...this.options, ...opt }) : k,
+       );
+ 
+-    // forEach possible key
++    const keySeparator =
++      opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
++
+     keys.forEach((k) => {
+       if (this.isValidLookup(found)) return;
++
+       const extracted = this.extractFromKey(k, opt);
+       const key = extracted.key;
+       usedKey = key;
+@@ -491,6 +494,8 @@ class Translator extends EventEmitter {
+         ? opt.lngs
+         : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
+ 
++      const keyPaths = this._buildKeyPaths(key, keySeparator);
++
+       namespaces.forEach((ns) => {
+         if (this.isValidLookup(found)) return;
+         usedNS = ns;
+@@ -513,70 +518,83 @@ class Translator extends EventEmitter {
+           if (this.isValidLookup(found)) return;
+           usedLng = code;
+ 
+-          const finalKeys = [key];
+-
+-          if (this.i18nFormat?.addLookupKeys) {
+-            this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
+-          } else {
+-            let pluralSuffix;
+-            if (needsPluralHandling)
+-              pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
+-            const zeroSuffix = `${this.options.pluralSeparator}zero`;
+-            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+-            // get key for plural if needed
+-            if (needsPluralHandling) {
+-              if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+-                finalKeys.push(
+-                  key + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+-                );
+-              }
+-              finalKeys.push(key + pluralSuffix);
+-              if (needsZeroSuffixLookup) {
+-                finalKeys.push(key + zeroSuffix);
+-              }
+-            }
++          keyPaths.forEach((currentKey) => {
++            if (this.isValidLookup(found)) return;
+ 
+-            // get key for context if needed
+-            if (needsContextHandling) {
+-              const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
+-              finalKeys.push(contextKey);
++            const finalKeys = [currentKey];
+ 
+-              // get key for context + plural if needed
++            if (this.i18nFormat?.addLookupKeys) {
++              this.i18nFormat.addLookupKeys(finalKeys, currentKey, code, ns, opt);
++            } else {
++              let pluralSuffix;
++              if (needsPluralHandling)
++                pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
++              const zeroSuffix = `${this.options.pluralSeparator}zero`;
++              const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+               if (needsPluralHandling) {
+                 if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                   finalKeys.push(
+-                    contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
++                    currentKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                   );
+                 }
+-                finalKeys.push(contextKey + pluralSuffix);
++                finalKeys.push(currentKey + pluralSuffix);
+                 if (needsZeroSuffixLookup) {
+-                  finalKeys.push(contextKey + zeroSuffix);
++                  finalKeys.push(currentKey + zeroSuffix);
++                }
++              }
++
++              if (needsContextHandling) {
++                const contextKey = `${currentKey}${this.options.contextSeparator || '_'}${opt.context}`;
++                finalKeys.push(contextKey);
++                if (needsPluralHandling) {
++                  if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
++                    finalKeys.push(
++                      contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
++                    );
++                  }
++                  finalKeys.push(contextKey + pluralSuffix);
++                  if (needsZeroSuffixLookup) {
++                    finalKeys.push(contextKey + zeroSuffix);
++                  }
+                 }
+               }
+             }
+-          }
+ 
+-          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+-          let possibleKey;
+-          while ((possibleKey = finalKeys.pop())) {
+-            if (!this.isValidLookup(found)) {
+-              exactUsedKey = possibleKey;
+-              found = this.getResource(code, ns, possibleKey, opt);
++            let possibleKey;
++            while ((possibleKey = finalKeys.pop())) {
++              if (!this.isValidLookup(found)) {
++                exactUsedKey = possibleKey;
++                found = this.getResource(code, ns, possibleKey, opt);
++              }
+             }
+-          }
++          });
+         });
+       });
+     });
+ 
+-    return { res: found, usedKey, exactUsedKey, usedLng, usedNS };
++    return {
++      res: found,
++      usedKey,
++      exactUsedKey,
++      usedLng,
++      usedNS,
++    };
++  }
++
++  _buildKeyPaths(key, keySeparator) {
++    if (!keySeparator || !isString(key) || !key.includes(keySeparator)) {
++      return [key];
++    }
++    const parts = key.split(keySeparator);
++    const paths = [key];
++    for (let i = 1; i < parts.length; i++) {
++      paths.push(parts.slice(i).join(keySeparator));
++    }
++    return paths;
+   }
+ 
+   isValidLookup(res) {
+-    return (
+-      res !== undefined &&
+-      !(!this.options.returnNull && res === null) &&
+-      !(!this.options.returnEmptyString && res === '')
+-    );
++    return res !== undefined && res !== null;
+   }
+ 
+   getResource(code, ns, key, options = {}) {
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..8263dae 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -95,11 +95,23 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
+     : Key
+   : never;
+ 
+-type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
+-  ? WithReturnObjects extends true
+-    ? keyof Res | KeysBuilderWithReturnObjects<Res>
+-    : KeysBuilderWithoutReturnObjects<Res>
+-  : string;
++type LeafKeys<Res, Key = keyof $OmitArrayKeys<Res>> = Key extends keyof Res
++  ? Res[Key] extends $Dictionary | readonly unknown[]
++    ? never
++    : Key
++  : never;
++
++type FallbackKeysBuilder<Res, Key = keyof Res> = Key extends keyof Res
++  ? Res[Key] extends $Dictionary | readonly unknown[]
++    ?
++        | JoinKeys<Key, LeafKeys<Res>>
++        | JoinKeys<Key, FallbackKeysBuilder<Res[Key]>>
++    : never
++  : never;
++
++type KeysBuilder<Res, WithReturnObjects = _ReturnObjects> = WithReturnObjects extends true
++  ? keyof Res | KeysBuilderWithReturnObjects<Res> | FallbackKeysBuilder<Res>
++  : KeysBuilderWithoutReturnObjects<Res> | FallbackKeysBuilder<Res>;
+ 
+ type KeysWithReturnObjects = {
+   [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], true>>;
+@@ -137,9 +149,13 @@ type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (in
+ 
+ type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
+   ? never
+-  : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
+-    ? Keys[UnionFallbackNs]
+-    : Keys[_FallbackNamespace & string];
++  : _FallbackNamespace extends readonly (infer FN)[]
++    ? FN extends keyof Keys
++      ? AppendNamespace<FN, Keys[FN]>
++      : never
++    : _FallbackNamespace extends keyof Keys
++      ? AppendNamespace<_FallbackNamespace, Keys[_FallbackNamespace]>
++      : never;
+ 
+ export type FilterKeysByContext<Keys, Context> = Context extends string
+   ? Keys extends
+@@ -258,18 +274,30 @@ type ParseTReturnWithFallback<Key, Val> = Val extends ''
+ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallback<
+   Key,
+   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
+-    ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+-    : // Process plurals only if count is provided inside options
+-      TOpt['count'] extends number
+-      ? TOpt['ordinal'] extends boolean
+-        ? ParseTReturnPluralOrdinal<Res, Key>
+-        : ParseTReturnPlural<Res, Key>
+-      : // otherwise access plain key without adding plural and ordinal suffixes
+-        Res extends readonly unknown[]
+-        ? Key extends `${infer NKey extends number}`
+-          ? Res[NKey]
+-          : never
+-        : Res[Key & keyof Res]
++    ? K1 extends keyof Res
++      ? ParseTReturn<RestKey, Res[K1], TOpt>
++      : Key extends keyof Res
++        ? TOpt['count'] extends number
++          ? TOpt['ordinal'] extends boolean
++            ? ParseTReturnPluralOrdinal<Res, Key>
++            : ParseTReturnPlural<Res, Key>
++          : Res extends readonly unknown[]
++            ? Key extends `${infer NKey extends number}`
++              ? Res[NKey]
++              : never
++            : Res[Key & keyof Res]
++        : never
++    : Key extends keyof Res
++      ? TOpt['count'] extends number
++        ? TOpt['ordinal'] extends boolean
++          ? ParseTReturnPluralOrdinal<Res, Key>
++          : ParseTReturnPlural<Res, Key>
++        : Res extends readonly unknown[]
++          ? Key extends `${infer NKey extends number}`
++            ? Res[NKey]
++            : never
++          : Res[Key & keyof Res]
++      : never
+ >;
+ 
+ type TReturnOptionalNull = _ReturnNull extends true ? null : never;
+@@ -321,16 +349,22 @@ type _PrimaryParse<
+   TOpt extends TOptions,
+ > = ParseTReturn<ActualKey, Resources[PrimaryNS], TOpt>;
+ 
+-type _FallbackParse<ActualKey, FallbackNS, TOpt extends TOptions> = [
+-  FallbackResourcesOf<FallbackNS, Resources>,
+-] extends [never]
+-  ? never
+-  : ParseTReturn<ActualKey, FallbackResourcesOf<FallbackNS, Resources>, TOpt>;
++type _FallbackParse<
++  ActualKey,
++  FallbackNS,
++  TOpt extends TOptions,
++> = FallbackNS extends readonly (infer FN)[]
++  ? FN extends keyof Resources
++    ? ParseTReturn<ActualKey, Resources[FN], TOpt>
++    : never
++  : FallbackNS extends keyof Resources
++    ? ParseTReturn<ActualKey, Resources[FallbackNS], TOpt>
++    : never;
+ 
+ export type TFunctionReturn<
+   Ns extends Namespace,
+   Key,
+-  TOpt extends TOptions,
++  TOpt extends TOptions = {},
+   ActualNS extends Namespace = NsByTOptions<Ns, TOpt>,
+   ActualKey = KeyWithContext<Key, TOpt>,
+ > = $IsResourcesDefined extends true
