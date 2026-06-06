@@ -81,11 +81,6 @@ class PluralResolver {
   }
 
   getSuffix(code, count, options = {}) {
-    const rule = this.getRule(code, options);
-
-    if (rule) {
-      return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
-    }
 
     this.logger.warn(`no plural rule found for: ${code}`);
     return this.getSuffix('dev', count, options);
