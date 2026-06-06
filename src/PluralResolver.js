@@ -81,7 +81,10 @@ class PluralResolver {
   }
 
   getSuffix(code, count, options = {}) {
-    const rule = this.getRule(code, options);
+    let rule = this.getRule(code, options);
+    if (!rule) rule = this.getRule('dev', options);
+
+    console.log('[PluralResolver.getSuffix] language:', code, 'count:', count, 'rule:', rule?.select?.(count));
 
     if (rule) {
       return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
