@@ -611,20 +611,6 @@ export type {
   SelectorKey,
 } from './typescript/t.js';
 
-declare const i18next: i18n;
-export default i18next;
-
-export const createInstance: i18n['createInstance'];
-
-export const dir: i18n['dir'];
-export const init: i18n['init'];
-export const loadResources: i18n['loadResources'];
-export const reloadResources: i18n['reloadResources'];
-export const use: i18n['use'];
-export const changeLanguage: i18n['changeLanguage'];
-export const getFixedT: i18n['getFixedT'];
-export const t: i18n['t'];
-export const exists: i18n['exists'];
 export const setDefaultNamespace: i18n['setDefaultNamespace'];
 export const hasLoadedNamespace: i18n['hasLoadedNamespace'];
 export const loadNamespaces: i18n['loadNamespaces'];
