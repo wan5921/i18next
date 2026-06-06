@@ -1,0 +1,306 @@
+diff --git a/4.2.2patch b/4.2.2patch
+deleted file mode 100644
+index aad1008..0000000
+--- a/4.2.2patch
++++ /dev/null
+@@ -1,300 +0,0 @@
+-diff --git a/src/PluralResolver.js b/src/PluralResolver.js
+-index 8765978..0e31880 100644
+---- a/src/PluralResolver.js
+-+++ b/src/PluralResolver.js
+-@@ -1,5 +1,5 @@
+- import baseLogger from './logger.js';
+--import { getCleanedCode } from './utils.js'
+-+import { getCleanedCode } from './utils.js';
+- 
+- const suffixesOrder = {
+-   zero: 0,
+-@@ -11,10 +11,10 @@ const suffixesOrder = {
+- };
+- 
+- const dummyRule = {
+--  select: (count) => count === 1 ? 'one' : 'other',
+-+  select: (count) => (count === 1 ? 'one' : 'other'),
+-   resolvedOptions: () => ({
+--    pluralCategories: ['one', 'other']
+--  })
+-+    pluralCategories: ['one', 'other'],
+-+  }),
+- };
+- 
+- class PluralResolver {
+-@@ -24,8 +24,6 @@ class PluralResolver {
+- 
+-     this.logger = baseLogger.create('pluralResolver');
+- 
+--    // Cache calls to Intl.PluralRules, since repeated calls can be slow in runtimes like React Native
+--    // and the memory usage difference is negligible
+-     this.pluralRulesCache = {};
+-   }
+- 
+-@@ -77,18 +75,30 @@ class PluralResolver {
+- 
+-     return rule.resolvedOptions().pluralCategories
+-       .sort((pluralCategory1, pluralCategory2) => suffixesOrder[pluralCategory1] - suffixesOrder[pluralCategory2])
+--      .map(pluralCategory => `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`);
+-+      .map((pluralCategory) => `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`);
+-   }
+- 
+-   getSuffix(code, count, options = {}) {
+--    const rule = this.getRule(code, options);
+-+    let rule = this.getRule(code, options);
+-+    if (!rule) rule = this.getRule('dev', options);
+-+
+-+    if (!rule) {
+-+      this.logger.warn(`no plural rule found for: ${code}`);
+-+      return '';
+-+    }
+-+
+-+    const pluralCategory = rule.select(count);
+- 
+--    if (rule) {
+--      return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${rule.select(count)}`;
+-+    if (options.logPluralResolution || this.options.logPluralResolution) {
+-+      console.log('[pluralResolver.getSuffix]', {
+-+        language: code,
+-+        count,
+-+        pluralCategory,
+-+        ordinal: !!options.ordinal,
+-+      });
+-     }
+- 
+--    this.logger.warn(`no plural rule found for: ${code}`);
+--    return this.getSuffix('dev', count, options);
+-+    return `${this.options.prepend}${options.ordinal ? `ordinal${this.options.prepend}` : ''}${pluralCategory}`;
+-   }
+- }
+- 
+-diff --git a/test/runtime/pluralResolver.test.js b/test/runtime/pluralResolver.test.js
+-index d02bc73..04036f7 100644
+---- a/test/runtime/pluralResolver.test.js
+-+++ b/test/runtime/pluralResolver.test.js
+-@@ -21,35 +21,25 @@ describe('PluralResolver', () => {
+- 
+-     it('correctly returns getRule for a supported locale', () => {
+-       const expected = {
+--        resolvedOptions() {},
+--        select() {},
+-+        select: expect.any(Function),
+-+        resolvedOptions: expect.any(Function),
+-       };
+--      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+--        return expected;
+--      });
+--
+--      const locale = 'en';
+- 
+--      expect(pr.getRule(locale)).toEqual(expected);
+--      expect(Intl.PluralRules).toHaveBeenCalledWith(
+--        locale,
+--        expect.objectContaining({ type: expect.any(String) }),
+--      );
+-+      expect(pr.getRule('en')).toEqual(expected);
+-     });
+- 
+-     it('correctly returns getRule for an unsupported locale', () => {
+--      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+--        throw Error('mock error');
+-+      expect(pr.getRule('nonexistent')).toEqual({
+-+        select: expect.any(Function),
+-+        resolvedOptions: expect.any(Function),
+-       });
+-+    });
+- 
+--      const locale = 'en';
+--
+--      expect(pr.getRule(locale)).not.toBeUndefined(); // we return dummy rule
+--      expect(Intl.PluralRules).toHaveBeenCalledOnce();
+--      expect(Intl.PluralRules).toHaveBeenCalledWith(
+--        locale,
+--        expect.objectContaining({ type: expect.any(String) }),
+--      );
+-+    it('correctly returns getRule for locale with region', () => {
+-+      expect(pr.getRule('pt-PT')).toEqual({
+-+        select: expect.any(Function),
+-+        resolvedOptions: expect.any(Function),
+-+      });
+-     });
+-   });
+- 
+-@@ -136,6 +126,34 @@ describe('PluralResolver', () => {
+-       expect(selectStub).toHaveBeenCalledWith(count);
+-     });
+- 
+-+    it('correctly returns suffix for arabic plural categories', () => {
+-+      expect(pr.getSuffix('ar', 0)).toEqual('_zero');
+-+      expect(pr.getSuffix('ar', 1)).toEqual('_one');
+-+      expect(pr.getSuffix('ar', 2)).toEqual('_two');
+-+      expect(pr.getSuffix('ar', 3)).toEqual('_few');
+-+      expect(pr.getSuffix('ar', 15)).toEqual('_many');
+-+      expect(pr.getSuffix('ar', 101)).toEqual('_other');
+-+    });
+-+
+-+    it('logs language and count when plural resolution logging is enabled', () => {
+-+      const logSpy = vitest.spyOn(console, 'log').mockImplementation(() => {});
+-+      const selectStub = vitest.fn().mockReturnValue('few');
+-+      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+-+        return { select: selectStub };
+-+      });
+-+
+-+      expect(pr.getSuffix('ar', 3, { logPluralResolution: true })).toEqual('_few');
+-+      expect(logSpy).toHaveBeenCalledWith(
+-+        '[pluralResolver.getSuffix]',
+-+        expect.objectContaining({
+-+          language: 'ar',
+-+          count: 3,
+-+          pluralCategory: 'few',
+-+          ordinal: false,
+-+        }),
+-+      );
+-+    });
+-+
+-     it('correctly returns suffix for an unsupported locale', () => {
+-       const locale = 'nonexistent';
+- 
+-diff --git a/test/runtime/translator/translator.translate.plural.test.js b/test/runtime/translator/translator.translate.plural.test.js
+-index 23764dc..5596bc0 100644
+---- a/test/runtime/translator/translator.translate.plural.test.js
+-+++ b/test/runtime/translator/translator.translate.plural.test.js
+-@@ -1,9 +1,10 @@
+--import { describe, it, expect, beforeAll } from 'vitest';
+-+import { describe, it, expect, beforeAll, afterEach, vitest } from 'vitest';
+- import Translator from '../../../src/Translator';
+- import ResourceStore from '../../../src/ResourceStore.js';
+- import LanguageUtils from '../../../src/LanguageUtils';
+- import PluralResolver from '../../../src/PluralResolver';
+- import Interpolator from '../../../src/Interpolator';
+-+import PostProcessor from '../../../src/postProcessor';
+- 
+- describe('Translator', () => {
+-   describe('translate() with plural', () => {
+-@@ -58,7 +59,7 @@ describe('Translator', () => {
+-           translation: {
+-             test: 'test_it',
+-             test_other: 'tests_it_other',
+--            test_many: 'tests_it_many', // ordinal
+-+            test_many: 'tests_it_many',
+-           },
+-         },
+-       });
+-@@ -82,6 +83,10 @@ describe('Translator', () => {
+-       t.changeLanguage('en');
+-     });
+- 
+-+    afterEach(() => {
+-+      vitest.restoreAllMocks();
+-+    });
+-+
+-     const tests = [
+-       { args: ['translation:test', { count: 1 }], expected: 'test_en' },
+-       { args: ['translation:test', { count: 2 }], expected: 'tests_en' },
+-@@ -119,23 +124,23 @@ describe('Translator', () => {
+-       { args: ['translation:test', { count: 101, lng: 'ar' }], expected: 'tests_ar_other' },
+-       {
+-         args: ['translation:test', { count: 0, lng: 'ar', ordinal: true }],
+--        expected: 'tests_ar_other', // fallback
+-+        expected: 'tests_ar_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 1, lng: 'ar', ordinal: true }],
+--        expected: 'tests_ar_other', // fallback
+-+        expected: 'tests_ar_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 2, lng: 'ar', ordinal: true }],
+--        expected: 'tests_ar_other', // fallback
+-+        expected: 'tests_ar_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 3, lng: 'ar', ordinal: true }],
+--        expected: 'tests_ar_other', // fallback
+-+        expected: 'tests_ar_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 15, lng: 'ar', ordinal: true }],
+--        expected: 'tests_ar_other', // fallback
+-+        expected: 'tests_ar_other',
+-       },
+-       { args: ['translation:test', { count: 0, lng: 'it' }], expected: 'tests_it_other' },
+-       { args: ['translation:test', { count: 1, lng: 'it' }], expected: 'test_it' },
+-@@ -143,19 +148,19 @@ describe('Translator', () => {
+-       { args: ['translation:test', { count: 11, lng: 'it' }], expected: 'tests_it_other' },
+-       {
+-         args: ['translation:test', { count: 0, lng: 'it', ordinal: true }],
+--        expected: 'tests_it_other', // fallback
+-+        expected: 'tests_it_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 1, lng: 'it', ordinal: true }],
+--        expected: 'tests_it_other', // fallback
+-+        expected: 'tests_it_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 2, lng: 'it', ordinal: true }],
+--        expected: 'tests_it_other', // fallback
+-+        expected: 'tests_it_other',
+-       },
+-       {
+-         args: ['translation:test', { count: 11, lng: 'it', ordinal: true }],
+--        expected: 'tests_it_many', // fallback
+-+        expected: 'tests_it_many',
+-       },
+-       {
+-         args: ['translation:oTest', { count: 1, lng: 'en', ordinal: true }],
+-@@ -180,5 +185,52 @@ describe('Translator', () => {
+-         expect(t.translate.apply(t, test.args)).toEqual(test.expected);
+-       });
+-     });
+-+
+-+    it('passes the resolved plural value into postProcess without overriding the plural selection', () => {
+-+      const process = vitest.fn((value) => value);
+-+      PostProcessor.addPostProcessor({
+-+        name: 'pluralPostProcessIdentity',
+-+        process,
+-+      });
+-+
+-+      expect(
+-+        t.translate('translation:test', {
+-+          lng: 'ar',
+-+          count: 3,
+-+          postProcess: 'pluralPostProcessIdentity',
+-+        }),
+-+      ).toEqual('tests_ar_few');
+-+      expect(process).toHaveBeenCalledWith(
+-+        'tests_ar_few',
+-+        'translation:test',
+-+        expect.objectContaining({
+-+          lng: 'ar',
+-+          count: 3,
+-+          postProcess: 'pluralPostProcessIdentity',
+-+        }),
+-+        t,
+-+      );
+-+    });
+-+
+-+    it('logs language and count through the translate plural call chain when enabled', () => {
+-+      const logSpy = vitest.spyOn(console, 'log').mockImplementation(() => {});
+-+
+-+      expect(
+-+        t.translate('translation:test', {
+-+          lng: 'ar',
+-+          count: 3,
+-+          logPluralResolution: true,
+-+        }),
+-+      ).toEqual('tests_ar_few');
+-+      expect(logSpy).toHaveBeenCalledWith(
+-+        '[pluralResolver.getSuffix]',
+-+        expect.objectContaining({
+-+          language: 'ar',
+-+          count: 3,
+-+          pluralCategory: 'few',
+-+          ordinal: false,
+-+        }),
+-+      );
+-+    });
+-   });
+- });
