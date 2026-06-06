@@ -1,0 +1,59 @@
+diff --git a/src/PluralResolver.js b/src/PluralResolver.js
+index 8765978..a63df5b 100644
+--- a/src/PluralResolver.js
++++ b/src/PluralResolver.js
+@@ -81,6 +81,7 @@ class PluralResolver {
+   }
+ 
+   getSuffix(code, count, options = {}) {
++    console.log('language:', code, 'count:', count);
+     const rule = this.getRule(code, options);
+ 
+     if (rule) {
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..933ed62 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -444,7 +444,7 @@ class Translator extends EventEmitter {
+       res = postProcessor.handle(
+         postProcessorNames,
+         res,
+-        key,
++        resolved ? resolved.exactUsedKey : (key[key.length - 1] || key),
+         this.options && this.options.postProcessPassResolved
+           ? {
+               i18nResolved: { ...resolved, usedParams: this.getUsedParamsDetails(opt) },
+diff --git a/test/runtime/translator/translator.translate.plural.test.js b/test/runtime/translator/translator.translate.plural.test.js
+index 23764dc..92cf19b 100644
+--- a/test/runtime/translator/translator.translate.plural.test.js
++++ b/test/runtime/translator/translator.translate.plural.test.js
+@@ -4,6 +4,7 @@ import ResourceStore from '../../../src/ResourceStore.js';
+ import LanguageUtils from '../../../src/LanguageUtils';
+ import PluralResolver from '../../../src/PluralResolver';
+ import Interpolator from '../../../src/Interpolator';
++import postProcessor from '../../../src/postProcessor.js';
+ 
+ describe('Translator', () => {
+   describe('translate() with plural', () => {
+@@ -173,8 +174,21 @@ describe('Translator', () => {
+         args: ['translation:oTest', { count: 1, lng: 'en', context: 'month' }],
+         expected: 'Every month (ctx)',
+       },
++      {
++        args: ['translation:test', { count: 2, lng: 'en', postProcess: 'dummyPostProcessor' }],
++        expected: 'tests_en_postProcessed',
++      },
+     ];
+ 
++    beforeAll(() => {
++      postProcessor.addPostProcessor({
++        name: 'dummyPostProcessor',
++        process: (value, key, options, translator) => {
++          return value + '_postProcessed';
++        }
++      });
++    });
++
+     tests.forEach((test) => {
+       it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {
+         expect(t.translate.apply(t, test.args)).toEqual(test.expected);

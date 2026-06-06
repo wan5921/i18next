@@ -4,6 +4,7 @@ import ResourceStore from '../../../src/ResourceStore.js';
 import LanguageUtils from '../../../src/LanguageUtils';
 import PluralResolver from '../../../src/PluralResolver';
 import Interpolator from '../../../src/Interpolator';
+import postProcessor from '../../../src/postProcessor.js';
 
 describe('Translator', () => {
   describe('translate() with plural', () => {
@@ -173,7 +174,20 @@ describe('Translator', () => {
         args: ['translation:oTest', { count: 1, lng: 'en', context: 'month' }],
         expected: 'Every month (ctx)',
       },
+      {
+        args: ['translation:test', { count: 2, lng: 'en', postProcess: 'dummyPostProcessor' }],
+        expected: 'tests_en_postProcessed',
+      },
     ];
+
+    beforeAll(() => {
+      postProcessor.addPostProcessor({
+        name: 'dummyPostProcessor',
+        process: (value, key, options, translator) => {
+          return value + '_postProcessed';
+        }
+      });
+    });
 
     tests.forEach((test) => {
       it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {

@@ -444,7 +444,7 @@ class Translator extends EventEmitter {
       res = postProcessor.handle(
         postProcessorNames,
         res,
-        key,
+        resolved ? resolved.exactUsedKey : (key[key.length - 1] || key),
         this.options && this.options.postProcessPassResolved
           ? {
               i18nResolved: { ...resolved, usedParams: this.getUsedParamsDetails(opt) },
