@@ -150,6 +150,44 @@ describe('PluralResolver', () => {
         expect.objectContaining({ type: expect.any(String) }),
       );
     });
+
+    it('correctly returns suffix for Russian (ru) with count=1, 2, 5', () => {
+      const locale = 'ru';
+
+      // Mock Intl.PluralRules for Russian
+      const selectStub = vitest.fn((count) => {
+        if (count === 1) return 'one';
+        if (count >= 2 && count <= 4) return 'few';
+        return 'many';
+      });
+      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+        return {
+          select: selectStub,
+          resolvedOptions: () => ({ pluralCategories: ['one', 'few', 'many'] })
+        };
+      });
+
+      expect(pr.getSuffix(locale, 1)).toEqual('_one');
+      expect(pr.getSuffix(locale, 2)).toEqual('_few');
+      expect(pr.getSuffix(locale, 5)).toEqual('_many');
+      expect(selectStub).toHaveBeenCalledTimes(3);
+    });
+
+    it('monitors getSuffix call counts with vi.spyOn', () => {
+      const locale = 'en';
+      const selectStub = vitest.fn().mockReturnValue('one');
+      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+        return { select: selectStub };
+      });
+
+      const getSuffixSpy = vitest.spyOn(pr, 'getSuffix');
+
+      expect(pr.getSuffix(locale, 1)).toEqual('_one');
+      expect(pr.getSuffix(locale, 2)).toEqual('_one');
+      expect(pr.getSuffix(locale, 3)).toEqual('_one');
+
+      expect(getSuffixSpy).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe('getPluralFormsOfKey()', () => {
@@ -181,6 +219,21 @@ describe('PluralResolver', () => {
         locale,
         expect.objectContaining({ type: expect.any(String) }),
       );
+    });
+
+    it('correctly returns plural forms with few and many categories', () => {
+      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
+        return { resolvedOptions: () => ({ pluralCategories: ['one', 'few', 'many', 'other'] }) };
+      });
+
+      const locale = 'ru';
+
+      expect(pr.getPluralFormsOfKey(locale, 'key')).toStrictEqual([
+        'key_one',
+        'key_few',
+        'key_many',
+        'key_other'
+      ]);
     });
   });
 

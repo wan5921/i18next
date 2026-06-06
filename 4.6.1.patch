@@ -1,0 +1,277 @@
+diff --git a/i18next.js b/i18next.js
+index 2305a8b..7cd72db 100644
+--- a/i18next.js
++++ b/i18next.js
+@@ -303,60 +303,6 @@
+     }
+   }
+ 
+-  class ResourceStore extends EventEmitter {
+-    constructor(data, options = {
+-      ns: ['translation'],
+-      defaultNS: 'translation'
+-    }) {
+-      super();
+-      this.data = data || {};
+-      this.options = options;
+-      if (this.options.keySeparator === undefined) {
+-        this.options.keySeparator = '.';
+-      }
+-      if (this.options.ignoreJSONStructure === undefined) {
+-        this.options.ignoreJSONStructure = true;
+-      }
+-    }
+-    addNamespaces(ns) {
+-      if (!this.options.ns.includes(ns)) {
+-        this.options.ns.push(ns);
+-      }
+-    }
+-    removeNamespaces(ns) {
+-      const index = this.options.ns.indexOf(ns);
+-      if (index > -1) {
+-        this.options.ns.splice(index, 1);
+-      }
+-    }
+-    getResource(lng, ns, key, options = {}) {
+-      const keySeparator = options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
+-      const ignoreJSONStructure = options.ignoreJSONStructure !== undefined ? options.ignoreJSONStructure : this.options.ignoreJSONStructure;
+-      let path;
+-      if (lng.includes('.')) {
+-        path = lng.split('.');
+-      } else {
+-        path = [lng, ns];
+-        if (key) {
+-          if (Array.isArray(key)) {
+-            path.push(...key);
+-          } else if (isString(key) && keySeparator) {
+-            path.push(...key.split(keySeparator));
+-          } else {
+-            path.push(key);
+-          }
+-        }
+-      }
+-      const result = getPath(this.data, path);
+-      if (!result && !ns && !key && lng.includes('.')) {
+-        lng = path[0];
+-        ns = path[1];
+-        key = path.slice(2).join('.');
+-      }
+-      if (result || !ignoreJSONStructure || !isString(key)) return result;
+-      return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
+-    }
+-    addResource(lng, ns, key, value, options = {
+       silent: false
+     }) {
+       const keySeparator = options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
+@@ -371,12 +317,6 @@
+       setPath(this.data, path, value);
+       if (!options.silent) this.emit('added', lng, ns, key, value);
+     }
+-    addResources(lng, ns, resources, options = {
+-      silent: false
+-    }) {
+-      for (const m in resources) {
+-        if (isString(resources[m]) || Array.isArray(resources[m])) this.addResource(lng, ns, m, resources[m], {
+-          silent: true
+         });
+       }
+       if (!options.silent) this.emit('added', lng, ns, resources);
+@@ -445,10 +385,33 @@
+       return value;
+     }
+   };
+-
++      let path = [lng, ns];
++      if (lng.includes('.')) {
++        path = lng.split('.');
++        deep = resources;
++        resources = ns;
++        ns = path[1];
++      }
++      this.addNamespaces(ns);
++      let pack = getPath(this.data, path) || {};
++      if (!options.skipCopy) resources = JSON.parse(JSON.stringify(resources));
++      if (deep) {
++        deepExtend(pack, resources, overwrite);
++      } else {
++        pack = {
++          ...pack,
++          ...resources
++        };
++      }
++      setPath(this.data, path, pack);
++      if (!options.silent) this.emit('added', lng, ns, resources);
+   const PATH_KEY = Symbol('i18next/PATH_KEY');
+   function createProxy() {
+-    const state = [];
++      if (this.hasResourceBundle(lng, ns)) {
++        delete this.data[lng][ns];
++      }
++      this.removeNamespaces(ns);
++      this.emit('removed', lng, ns);
+     const handler = Object.create(null);
+     let proxy;
+     handler.get = (target, key) => {
+diff --git a/test/runtime/pluralResolver.test.js b/test/runtime/pluralResolver.test.js
+index d02bc73..d37b3de 100644
+--- a/test/runtime/pluralResolver.test.js
++++ b/test/runtime/pluralResolver.test.js
+@@ -150,6 +150,44 @@ describe('PluralResolver', () => {
+         expect.objectContaining({ type: expect.any(String) }),
+       );
+     });
++
++    it('correctly returns suffix for Russian (ru) with count=1, 2, 5', () => {
++      const locale = 'ru';
++
++      // Mock Intl.PluralRules for Russian
++      const selectStub = vitest.fn((count) => {
++        if (count === 1) return 'one';
++        if (count >= 2 && count <= 4) return 'few';
++        return 'many';
++      });
++      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
++        return {
++          select: selectStub,
++          resolvedOptions: () => ({ pluralCategories: ['one', 'few', 'many'] })
++        };
++      });
++
++      expect(pr.getSuffix(locale, 1)).toEqual('_one');
++      expect(pr.getSuffix(locale, 2)).toEqual('_few');
++      expect(pr.getSuffix(locale, 5)).toEqual('_many');
++      expect(selectStub).toHaveBeenCalledTimes(3);
++    });
++
++    it('monitors getSuffix call counts with vi.spyOn', () => {
++      const locale = 'en';
++      const selectStub = vitest.fn().mockReturnValue('one');
++      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
++        return { select: selectStub };
++      });
++
++      const getSuffixSpy = vitest.spyOn(pr, 'getSuffix');
++
++      expect(pr.getSuffix(locale, 1)).toEqual('_one');
++      expect(pr.getSuffix(locale, 2)).toEqual('_one');
++      expect(pr.getSuffix(locale, 3)).toEqual('_one');
++
++      expect(getSuffixSpy).toHaveBeenCalledTimes(3);
++    });
+   });
+ 
+   describe('getPluralFormsOfKey()', () => {
+@@ -182,6 +220,21 @@ describe('PluralResolver', () => {
+         expect.objectContaining({ type: expect.any(String) }),
+       );
+     });
++
++    it('correctly returns plural forms with few and many categories', () => {
++      vitest.spyOn(Intl, 'PluralRules').mockImplementation(function () {
++        return { resolvedOptions: () => ({ pluralCategories: ['one', 'few', 'many', 'other'] }) };
++      });
++
++      const locale = 'ru';
++
++      expect(pr.getPluralFormsOfKey(locale, 'key')).toStrictEqual([
++        'key_one',
++        'key_few',
++        'key_many',
++        'key_other'
++      ]);
++    });
+   });
+ 
+   describe('getSuffixes()', () => {
+diff --git a/test/runtime/postProcessor.test.js b/test/runtime/postProcessor.test.js
+index a094c49..78c6de8 100644
+--- a/test/runtime/postProcessor.test.js
++++ b/test/runtime/postProcessor.test.js
+@@ -1,5 +1,10 @@
+-import { describe, it, expect, beforeAll } from 'vitest';
++import { describe, it, expect, beforeAll, beforeEach, afterEach, vitest } from 'vitest';
+ import postProcessor from '../../src/postProcessor';
++import Translator from '../../src/Translator';
++import ResourceStore from '../../src/ResourceStore';
++import LanguageUtils from '../../src/LanguageUtils';
++import PluralResolver from '../../src/PluralResolver';
++import Interpolator from '../../src/Interpolator';
+ 
+ describe('postProcessor', () => {
+   describe('add and handle()', () => {
+@@ -18,4 +23,75 @@ describe('postProcessor', () => {
+       });
+     });
+   });
++
++  describe('postProcess scenarios', () => {
++    /** @type {Translator} */
++    let t;
++
++    beforeEach(() => {
++      // Reset processors and add test processors
++      postProcessor.processors = {};
++      postProcessor.addPostProcessor({
++        name: 'uppercase',
++        process: (value) => value.toUpperCase(),
++      });
++      postProcessor.addPostProcessor({
++        name: 'lowercase',
++        process: (value) => value.toLowerCase(),
++      });
++
++      const rs = new ResourceStore({
++        en: {
++          translation: {
++            test: 'Hello World',
++          },
++        },
++      });
++      const lu = new LanguageUtils({ fallbackLng: 'en' });
++      t = new Translator(
++        {
++          resourceStore: rs,
++          languageUtils: lu,
++          pluralResolver: new PluralResolver(lu, { prepend: '_' }),
++          interpolator: new Interpolator(),
++        },
++        {
++          defaultNS: 'translation',
++          ns: 'translation',
++        },
++      );
++      t.changeLanguage('en');
++    });
++
++    afterEach(() => {
++      vitest.restoreAllMocks();
++    });
++
++    it('should handle empty postProcess', () => {
++      const result = t.translate('test', { postProcess: [] });
++      expect(result).toEqual('Hello World');
++    });
++
++    it('should handle postProcess as null/undefined', () => {
++      const result1 = t.translate('test', { postProcess: null });
++      const result2 = t.translate('test', { postProcess: undefined });
++      expect(result1).toEqual('Hello World');
++      expect(result2).toEqual('Hello World');
++    });
++
++    it('should handle conflicting postProcessors (uppercase then lowercase)', () => {
++      const result = t.translate('test', { postProcess: ['uppercase', 'lowercase'] });
++      expect(result).toEqual('hello world');
++    });
++
++    it('should handle conflicting postProcessors (lowercase then uppercase)', () => {
++      const result = t.translate('test', { postProcess: ['lowercase', 'uppercase'] });
++      expect(result).toEqual('HELLO WORLD');
++    });
++
++    it('should handle non-existent postProcessors', () => {
++      const result = t.translate('test', { postProcess: ['nonExistent'] });
++      expect(result).toEqual('Hello World');
++    });
++  });
+ });
