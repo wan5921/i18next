@@ -1,0 +1,337 @@
+diff --git a/.github/workflows/CI.yml b/.github/workflows/CI.yml
+index 488085e..ec62b2b 100644
+--- a/.github/workflows/CI.yml
++++ b/.github/workflows/CI.yml
+@@ -3,7 +3,7 @@ name: CI
+ on:
+   push:
+     branches:
+-      - master
++      - main
+   pull_request:
+     # types: [opened, synchronize, reopened, ready_for_review]
+     branches:
+@@ -23,7 +23,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Format check
+         run: npm run format
+@@ -44,7 +44,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Build
+         run: npm run build
+@@ -72,7 +72,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Test
+         if: ${{ !matrix.collectCoverage }}
+@@ -82,9 +82,11 @@ jobs:
+         if: ${{ matrix.collectCoverage }}
+         run: npm run test:coverage
+ 
+-      - name: Coveralls
++      - name: Upload coverage to Codecov
+         if: ${{ matrix.collectCoverage }}
+-        uses: coverallsapp/github-action@v2
++        uses: codecov/codecov-action@v4
++        with:
++          file: ./coverage/lcov.info
+ 
+   testTypescript:
+     name: Test typescript
+@@ -99,7 +101,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install dependencies
+-        run: npm install
++        run: npm ci
+ 
+       - name: Test
+         run: npm run test:typescript
+diff --git a/README.md b/README.md
+index 9700a96..cd65b32 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,7 @@
+ # i18next: learn once - translate everywhere [![Post](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://x.com/intent/tweet?text=Awesome%20i18next:%20learn%20once%20-%20translate%20everywhere%20-%20the%20internationalization%20ecosystem%20&url=https://github.com/i18next/i18next&via=jamuhl&hashtags=i18n,javascript,dev)
+ 
+ [![CI](https://github.com/i18next/i18next/actions/workflows/CI.yml/badge.svg)](https://github.com/i18next/i18next/actions/workflows/CI.yml)
++[![Codecov](https://img.shields.io/codecov/c/github/i18next/i18next/main.svg?style=flat-square)](https://codecov.io/github/i18next/i18next)
+ [![Coveralls](https://img.shields.io/coveralls/i18next/i18next/master.svg?style=flat-square)](https://coveralls.io/github/i18next/i18next)
+ [![Package Quality](https://packagequality.com/shield/i18next.svg)](https://packagequality.com/#?package=i18next)
+ [![cdnjs version](https://img.shields.io/cdnjs/v/i18next.svg?style=flat-square)](https://cdnjs.com/libraries/i18next)
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..9be09f7 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -472,49 +472,17 @@ class Translator extends EventEmitter {
+       );
+ 
+     // forEach possible key
+-    keys.forEach((k) => {
+-      if (this.isValidLookup(found)) return;
+-      const extracted = this.extractFromKey(k, opt);
+-      const key = extracted.key;
++      if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
+       usedKey = key;
+       let namespaces = extracted.namespaces;
+       if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
+ 
+       const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
+-      const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
+-      const needsContextHandling =
+-        opt.context !== undefined &&
+-        (isString(opt.context) || typeof opt.context === 'number') &&
+-        opt.context !== '';
+-
+-      const codes = opt.lngs
+-        ? opt.lngs
+-        : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
+-
+-      namespaces.forEach((ns) => {
+-        if (this.isValidLookup(found)) return;
+-        usedNS = ns;
+-
+-        if (
+-          !this.checkedLoadedFor[`${codes[0]}-${ns}`] &&
+-          this.utils?.hasLoadedNamespace &&
+-          !this.utils?.hasLoadedNamespace(usedNS)
+-        ) {
+-          this.checkedLoadedFor[`${codes[0]}-${ns}`] = true;
+-          this.logger.warn(
+-            `key "${usedKey}" for languages "${codes.join(
+-              ', ',
+-            )}" won't get resolved as namespace "${usedNS}" was not yet loaded`,
+-            'This means something IS WRONG in your setup. You access the t function before i18next.init / i18next.loadNamespace / i18next.changeLanguage was done. Wait for the callback or Promise to resolve before accessing it!!!',
+-          );
+-        }
+ 
+         codes.forEach((code) => {
+-          if (this.isValidLookup(found)) return;
+-          usedLng = code;
+ 
+           const finalKeys = [key];
+-
++            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+           if (this.i18nFormat?.addLookupKeys) {
+             this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
+           } else {
+@@ -535,11 +503,13 @@ class Translator extends EventEmitter {
+                 finalKeys.push(key + zeroSuffix);
+               }
+             }
+-
++              if (needsPluralHandling) {
++            // get key for context if needed
+             // get key for context if needed
+             if (needsContextHandling) {
+               const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
+               finalKeys.push(contextKey);
++              // get key for context + plural if needed
+ 
+               // get key for context + plural if needed
+               if (needsPluralHandling) {
+@@ -554,47 +524,14 @@ class Translator extends EventEmitter {
+                 }
+               }
+             }
++          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+           }
+-
++            if (!this.isValidLookup(found)) {
+           // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+           let possibleKey;
+           while ((possibleKey = finalKeys.pop())) {
+             if (!this.isValidLookup(found)) {
+               exactUsedKey = possibleKey;
+-              found = this.getResource(code, ns, possibleKey, opt);
+-            }
+-          }
+-        });
+-      });
+-    });
+-
+-    return { res: found, usedKey, exactUsedKey, usedLng, usedNS };
+-  }
+-
+-  isValidLookup(res) {
+-    return (
+-      res !== undefined &&
+-      !(!this.options.returnNull && res === null) &&
+-      !(!this.options.returnEmptyString && res === '')
+-    );
+-  }
+-
+-  getResource(code, ns, key, options = {}) {
+-    if (this.i18nFormat?.getResource) return this.i18nFormat.getResource(code, ns, key, options);
+-    return this.resourceStore.getResource(code, ns, key, options);
+-  }
+-
+-  getUsedParamsDetails(options = {}) {
+-    // we need to remember to extend this array whenever new option properties are added
+-    const optionsKeys = [
+-      'defaultValue',
+-      'ordinal',
+-      'context',
+-      'replace',
+-      'lng',
+-      'lngs',
+-      'fallbackLng',
+-      'ns',
+       'keySeparator',
+       'nsSeparator',
+       'returnObjects',
+@@ -623,6 +560,8 @@ class Translator extends EventEmitter {
+     }
+ 
+     return data;
++              exactUsedKey = possibleKey;
++              found = this.getResource(code, ns, possibleKey, opt);
+   }
+ 
+   static hasDefaultValue(options) {
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..fdcdb2d 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -95,26 +95,11 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
+     : Key
+   : never;
+ 
+-type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
++    ? keyof Res | KeysBuilderWithReturnObjects<Res>
+   ? WithReturnObjects extends true
+     ? keyof Res | KeysBuilderWithReturnObjects<Res>
+     : KeysBuilderWithoutReturnObjects<Res>
+-  : string;
+-
+-type KeysWithReturnObjects = {
+-  [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], true>>;
+-};
+-type KeysWithoutReturnObjects = {
+-  [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], false>>;
+-};
+-
+-type ResourceKeys<WithReturnObjects = _ReturnObjects> = WithReturnObjects extends true
+-  ? KeysWithReturnObjects
+-  : KeysWithoutReturnObjects;
+-
+-/** **********************************************************************
+  * Parse t function keys based on the namespace, options and key prefix *
+- *********************************************************************** */
+ export type KeysByTOptions<TOpt extends TOptions> = TOpt['returnObjects'] extends true
+   ? ResourceKeys<true>
+   : ResourceKeys;
+@@ -149,14 +134,6 @@ export type FilterKeysByContext<Keys, Context> = Context extends string
+     : never
+   : Keys;
+ 
+-export type ParseKeys<
+-  Ns extends Namespace = DefaultNamespace,
+-  TOpt extends TOptions = {},
+-  KPrefix = undefined,
+-  Keys extends $Dictionary = KeysByTOptions<TOpt>,
+-  ActualNS extends Namespace = NsByTOptions<Ns, TOpt>,
+-  Context extends TOpt['context'] = TOpt['context'],
+-> = $IsResourcesDefined extends true
+   ? FilterKeysByContext<
+       | ParseKeysByKeyPrefix<Keys[$FirstNamespace<ActualNS>], KPrefix>
+       | ParseKeysByNamespaces<ActualNS, Keys>
+@@ -274,30 +251,26 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
+ 
+ type TReturnOptionalNull = _ReturnNull extends true ? null : never;
+ type TReturnOptionalObjects<TOpt extends { returnObjects?: unknown }> = _ReturnObjects extends true
+-  ? $SpecialObject | string
+-  : TOpt['returnObjects'] extends true
+-    ? $SpecialObject
+-    : string;
+-type DefaultTReturn<TOpt extends { returnObjects?: unknown }> =
+-  | TReturnOptionalObjects<TOpt>
+-  | TReturnOptionalNull;
+-
+-export type KeyWithContext<Key, TOpt extends TOptions> = TOpt['context'] extends string
+-  ? `${Key & string}${_ContextSeparator}${TOpt['context']}`
+-  : Key;
+-
+-export type ContextOfKey<
+-  Key extends string,
+-  Ns extends Namespace = DefaultNamespace,
+-  TOpt extends TOptions = {},
+-  KPrefix = undefined,
+-  Keys extends $Dictionary = KeysByTOptions<TOpt>,
+-  ActualNS extends Namespace = NsByTOptions<Ns, TOpt>,
+-  ActualKeys =
+-    | ParseKeysByKeyPrefix<Keys[$FirstNamespace<ActualNS>], KPrefix>
+-    | ParseKeysByNamespaces<ActualNS, Keys>
+-    | ParseKeysByFallbackNs<Keys>,
+-> = $IsResourcesDefined extends true
++    ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
++    : // Process plurals only if count is provided inside options
++    : // Process plurals only if count is provided inside options
++      TOpt['count'] extends number
++      ? TOpt['ordinal'] extends boolean
++        ? ParseTReturnPluralOrdinal<Res, Key>
++        : ParseTReturnPlural<Res, Key>
++      : // otherwise access plain key without adding plural and ordinal suffixes
++        ? ParseTReturnPluralOrdinal<Res, Key>
++        : ParseTReturnPlural<Res, Key>
++      : // otherwise access plain key without adding plural and ordinal suffixes
++      : // otherwise access plain key without adding plural and ordinal suffixes
++        Res extends readonly unknown[]
++          : never
++        : Res[Key & keyof Res]
++        Res extends readonly unknown[]
++        ? Key extends `${infer NKey extends number}`
++          ? Res[NKey]
++          : never
++        : Res[Key & keyof Res]
+   ? Key extends ActualKeys
+     ? string
+     : ActualKeys extends
+@@ -349,23 +322,7 @@ export type TFunctionReturn<
+ 
+ export type TFunctionDetailedResult<T = string, TOpt extends TOptions = {}> = {
+   /**
+-   * The plain used key
+-   */
+-  usedKey: string;
+-  /**
+-   * The translation result.
+-   */
+-  res: T;
+-  /**
+-   * The key with context / plural
+-   */
+-  exactUsedKey: string;
+-  /**
+-   * The used language for this translation.
+-   */
+-  usedLng: string;
+-  /**
+-   * The used namespace for this translation.
++type _FallbackParse<ActualKey, FallbackNS, TOpt extends TOptions> = [
+    */
+   usedNS: string;
+   /**
+@@ -374,7 +331,7 @@ export type TFunctionDetailedResult<T = string, TOpt extends TOptions = {}> = {
+   usedParams: InterpolationMap<T> & { count?: TOpt['count'] };
+ };
+ 
+-type TFunctionProcessReturnValue<Ret, DefaultValue> = Ret extends string | $SpecialObject | null
++    ? ParseTReturn<RestKey, Resources[Nsp & keyof Resources], TOpt>
+   ? Ret
+   : [DefaultValue] extends [never]
+     ? Ret

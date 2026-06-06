@@ -472,49 +472,17 @@ class Translator extends EventEmitter {
       );
 
     // forEach possible key
-    keys.forEach((k) => {
-      if (this.isValidLookup(found)) return;
-      const extracted = this.extractFromKey(k, opt);
-      const key = extracted.key;
+      if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
       usedKey = key;
       let namespaces = extracted.namespaces;
       if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
 
       const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
-      const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
-      const needsContextHandling =
-        opt.context !== undefined &&
-        (isString(opt.context) || typeof opt.context === 'number') &&
-        opt.context !== '';
-
-      const codes = opt.lngs
-        ? opt.lngs
-        : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
-
-      namespaces.forEach((ns) => {
-        if (this.isValidLookup(found)) return;
-        usedNS = ns;
-
-        if (
-          !this.checkedLoadedFor[`${codes[0]}-${ns}`] &&
-          this.utils?.hasLoadedNamespace &&
-          !this.utils?.hasLoadedNamespace(usedNS)
-        ) {
-          this.checkedLoadedFor[`${codes[0]}-${ns}`] = true;
-          this.logger.warn(
-            `key "${usedKey}" for languages "${codes.join(
-              ', ',
-            )}" won't get resolved as namespace "${usedNS}" was not yet loaded`,
-            'This means something IS WRONG in your setup. You access the t function before i18next.init / i18next.loadNamespace / i18next.changeLanguage was done. Wait for the callback or Promise to resolve before accessing it!!!',
-          );
-        }
 
         codes.forEach((code) => {
-          if (this.isValidLookup(found)) return;
-          usedLng = code;
 
           const finalKeys = [key];
-
+            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
           if (this.i18nFormat?.addLookupKeys) {
             this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
           } else {
@@ -535,11 +503,13 @@ class Translator extends EventEmitter {
                 finalKeys.push(key + zeroSuffix);
               }
             }
-
+              if (needsPluralHandling) {
+            // get key for context if needed
             // get key for context if needed
             if (needsContextHandling) {
               const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
               finalKeys.push(contextKey);
+              // get key for context + plural if needed
 
               // get key for context + plural if needed
               if (needsPluralHandling) {
@@ -554,47 +524,14 @@ class Translator extends EventEmitter {
                 }
               }
             }
+          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
           }
-
+            if (!this.isValidLookup(found)) {
           // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
           let possibleKey;
           while ((possibleKey = finalKeys.pop())) {
             if (!this.isValidLookup(found)) {
               exactUsedKey = possibleKey;
-              found = this.getResource(code, ns, possibleKey, opt);
-            }
-          }
-        });
-      });
-    });
-
-    return { res: found, usedKey, exactUsedKey, usedLng, usedNS };
-  }
-
-  isValidLookup(res) {
-    return (
-      res !== undefined &&
-      !(!this.options.returnNull && res === null) &&
-      !(!this.options.returnEmptyString && res === '')
-    );
-  }
-
-  getResource(code, ns, key, options = {}) {
-    if (this.i18nFormat?.getResource) return this.i18nFormat.getResource(code, ns, key, options);
-    return this.resourceStore.getResource(code, ns, key, options);
-  }
-
-  getUsedParamsDetails(options = {}) {
-    // we need to remember to extend this array whenever new option properties are added
-    const optionsKeys = [
-      'defaultValue',
-      'ordinal',
-      'context',
-      'replace',
-      'lng',
-      'lngs',
-      'fallbackLng',
-      'ns',
       'keySeparator',
       'nsSeparator',
       'returnObjects',
@@ -623,6 +560,8 @@ class Translator extends EventEmitter {
     }
 
     return data;
+              exactUsedKey = possibleKey;
+              found = this.getResource(code, ns, possibleKey, opt);
   }
 
   static hasDefaultValue(options) {

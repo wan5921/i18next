@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     # types: [opened, synchronize, reopened, ready_for_review]
     branches:
@@ -23,7 +23,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Format check
         run: npm run format
@@ -44,7 +44,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -72,7 +72,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Test
         if: ${{ !matrix.collectCoverage }}
@@ -82,9 +82,11 @@ jobs:
         if: ${{ matrix.collectCoverage }}
         run: npm run test:coverage
 
-      - name: Coveralls
+      - name: Upload coverage to Codecov
         if: ${{ matrix.collectCoverage }}
-        uses: coverallsapp/github-action@v2
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
 
   testTypescript:
     name: Test typescript
@@ -99,7 +101,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Test
         run: npm run test:typescript

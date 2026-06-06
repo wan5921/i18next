@@ -95,26 +95,11 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
     : Key
   : never;
 
-type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
+    ? keyof Res | KeysBuilderWithReturnObjects<Res>
   ? WithReturnObjects extends true
     ? keyof Res | KeysBuilderWithReturnObjects<Res>
     : KeysBuilderWithoutReturnObjects<Res>
-  : string;
-
-type KeysWithReturnObjects = {
-  [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], true>>;
-};
-type KeysWithoutReturnObjects = {
-  [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], false>>;
-};
-
-type ResourceKeys<WithReturnObjects = _ReturnObjects> = WithReturnObjects extends true
-  ? KeysWithReturnObjects
-  : KeysWithoutReturnObjects;
-
-/** **********************************************************************
  * Parse t function keys based on the namespace, options and key prefix *
- *********************************************************************** */
 export type KeysByTOptions<TOpt extends TOptions> = TOpt['returnObjects'] extends true
   ? ResourceKeys<true>
   : ResourceKeys;
@@ -149,14 +134,6 @@ export type FilterKeysByContext<Keys, Context> = Context extends string
     : never
   : Keys;
 
-export type ParseKeys<
-  Ns extends Namespace = DefaultNamespace,
-  TOpt extends TOptions = {},
-  KPrefix = undefined,
-  Keys extends $Dictionary = KeysByTOptions<TOpt>,
-  ActualNS extends Namespace = NsByTOptions<Ns, TOpt>,
-  Context extends TOpt['context'] = TOpt['context'],
-> = $IsResourcesDefined extends true
   ? FilterKeysByContext<
       | ParseKeysByKeyPrefix<Keys[$FirstNamespace<ActualNS>], KPrefix>
       | ParseKeysByNamespaces<ActualNS, Keys>
@@ -274,30 +251,26 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
 
 type TReturnOptionalNull = _ReturnNull extends true ? null : never;
 type TReturnOptionalObjects<TOpt extends { returnObjects?: unknown }> = _ReturnObjects extends true
-  ? $SpecialObject | string
-  : TOpt['returnObjects'] extends true
-    ? $SpecialObject
-    : string;
-type DefaultTReturn<TOpt extends { returnObjects?: unknown }> =
-  | TReturnOptionalObjects<TOpt>
-  | TReturnOptionalNull;
-
-export type KeyWithContext<Key, TOpt extends TOptions> = TOpt['context'] extends string
-  ? `${Key & string}${_ContextSeparator}${TOpt['context']}`
-  : Key;
-
-export type ContextOfKey<
-  Key extends string,
-  Ns extends Namespace = DefaultNamespace,
-  TOpt extends TOptions = {},
-  KPrefix = undefined,
-  Keys extends $Dictionary = KeysByTOptions<TOpt>,
-  ActualNS extends Namespace = NsByTOptions<Ns, TOpt>,
-  ActualKeys =
-    | ParseKeysByKeyPrefix<Keys[$FirstNamespace<ActualNS>], KPrefix>
-    | ParseKeysByNamespaces<ActualNS, Keys>
-    | ParseKeysByFallbackNs<Keys>,
-> = $IsResourcesDefined extends true
+    ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+    : // Process plurals only if count is provided inside options
+    : // Process plurals only if count is provided inside options
+      TOpt['count'] extends number
+      ? TOpt['ordinal'] extends boolean
+        ? ParseTReturnPluralOrdinal<Res, Key>
+        : ParseTReturnPlural<Res, Key>
+      : // otherwise access plain key without adding plural and ordinal suffixes
+        ? ParseTReturnPluralOrdinal<Res, Key>
+        : ParseTReturnPlural<Res, Key>
+      : // otherwise access plain key without adding plural and ordinal suffixes
+      : // otherwise access plain key without adding plural and ordinal suffixes
+        Res extends readonly unknown[]
+          : never
+        : Res[Key & keyof Res]
+        Res extends readonly unknown[]
+        ? Key extends `${infer NKey extends number}`
+          ? Res[NKey]
+          : never
+        : Res[Key & keyof Res]
   ? Key extends ActualKeys
     ? string
     : ActualKeys extends
@@ -349,23 +322,7 @@ export type TFunctionReturn<
 
 export type TFunctionDetailedResult<T = string, TOpt extends TOptions = {}> = {
   /**
-   * The plain used key
-   */
-  usedKey: string;
-  /**
-   * The translation result.
-   */
-  res: T;
-  /**
-   * The key with context / plural
-   */
-  exactUsedKey: string;
-  /**
-   * The used language for this translation.
-   */
-  usedLng: string;
-  /**
-   * The used namespace for this translation.
+type _FallbackParse<ActualKey, FallbackNS, TOpt extends TOptions> = [
    */
   usedNS: string;
   /**
@@ -374,7 +331,7 @@ export type TFunctionDetailedResult<T = string, TOpt extends TOptions = {}> = {
   usedParams: InterpolationMap<T> & { count?: TOpt['count'] };
 };
 
-type TFunctionProcessReturnValue<Ret, DefaultValue> = Ret extends string | $SpecialObject | null
+    ? ParseTReturn<RestKey, Resources[Nsp & keyof Resources], TOpt>
   ? Ret
   : [DefaultValue] extends [never]
     ? Ret
