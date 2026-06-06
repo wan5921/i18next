@@ -62,30 +62,6 @@ class ResourceStore extends EventEmitter {
     if (result || !ignoreJSONStructure || !isString(key)) return result;
 
     return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
-  }
-
-  addResource(lng, ns, key, value, options = { silent: false }) {
-    const keySeparator =
-      options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
-
-    let path = [lng, ns];
-    if (key) path = path.concat(keySeparator ? key.split(keySeparator) : key);
-
-    if (lng.includes('.')) {
-      path = lng.split('.');
-      value = ns;
-      ns = path[1];
-    }
-
-    this.addNamespaces(ns);
-
-    setPath(this.data, path, value);
-
-    if (!options.silent) this.emit('added', lng, ns, key, value);
-  }
-
-  addResources(lng, ns, resources, options = { silent: false }) {
-    for (const m in resources) {
       if (isString(resources[m]) || Array.isArray(resources[m]))
         this.addResource(lng, ns, m, resources[m], { silent: true });
     }

@@ -46,6 +46,7 @@ describe('t', () => {
       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
 
       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
+      expectTypeOf(t('alternate:foobar.barfoo')).toEqualTypeOf<'barfoo'>();
       expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
     });
 
@@ -53,8 +54,6 @@ describe('t', () => {
       // @ts-expect-error
       assertType(t('bar'));
 
-      // @ts-expect-error
-      assertType(t('alternate:foobar.barfoo'));
       // @ts-expect-error
       assertType(t('foobar'));
 

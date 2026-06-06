@@ -19,6 +19,12 @@ describe('Translator', () => {
               test: 'deep_en',
             },
           },
+          ns1: {
+            child: 'ns1_root_child_en',
+            parent: {
+              child: 'ns1_parent_child_en',
+            },
+          },
         },
         de: {
           translation: {
@@ -61,6 +67,8 @@ describe('Translator', () => {
           expected: 'deep_en',
         },
         { args: ['deep.test', { lng: 'en-US', nsSeparator: '.' }], expected: 'deep_en' },
+        { args: ['ns1:parent.child'], expected: 'ns1_parent_child_en' },
+        { args: ['ns1:missing.child'], expected: 'ns1_root_child_en' },
       ];
 
       tests.forEach((test) => {
@@ -179,6 +187,17 @@ describe('Translator', () => {
             exactUsedKey: 'deep.test',
             usedLng: 'en',
             usedNS: 'translation',
+            usedParams: {},
+          },
+        },
+        {
+          args: ['ns1:missing.child', { returnDetails: true }],
+          expected: {
+            usedKey: 'missing.child',
+            res: 'ns1_root_child_en',
+            exactUsedKey: 'child',
+            usedLng: 'en',
+            usedNS: 'ns1',
             usedParams: {},
           },
         },

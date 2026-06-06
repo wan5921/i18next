@@ -1,0 +1,217 @@
+diff --git a/src/ResourceStore.js b/src/ResourceStore.js
+index 1dd8a02..06abe51 100644
+--- a/src/ResourceStore.js
++++ b/src/ResourceStore.js
+@@ -62,30 +62,6 @@ class ResourceStore extends EventEmitter {
+     if (result || !ignoreJSONStructure || !isString(key)) return result;
+ 
+     return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
+-  }
+-
+-  addResource(lng, ns, key, value, options = { silent: false }) {
+-    const keySeparator =
+-      options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
+-
+-    let path = [lng, ns];
+-    if (key) path = path.concat(keySeparator ? key.split(keySeparator) : key);
+-
+-    if (lng.includes('.')) {
+-      path = lng.split('.');
+-      value = ns;
+-      ns = path[1];
+-    }
+-
+-    this.addNamespaces(ns);
+-
+-    setPath(this.data, path, value);
+-
+-    if (!options.silent) this.emit('added', lng, ns, key, value);
+-  }
+-
+-  addResources(lng, ns, resources, options = { silent: false }) {
+-    for (const m in resources) {
+       if (isString(resources[m]) || Array.isArray(resources[m]))
+         this.addResource(lng, ns, m, resources[m], { silent: true });
+     }
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..e67dd38 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -480,6 +480,38 @@ class Translator extends EventEmitter {
+       let namespaces = extracted.namespaces;
+       if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
+ 
++      const keySeparator =
++        opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
++      const shouldIteratePath =
++        keySeparator && isString(k) && k !== key && isString(key) && key.includes(keySeparator);
++      const getLookupKeys = (possibleKey, code, ns) => {
++        const lookupKeys = [possibleKey];
++
++        if (!shouldIteratePath || !isString(possibleKey) || !possibleKey.includes(keySeparator)) {
++          return lookupKeys;
++        }
++
++        const namespaceRoot = this.getResource(code, ns, undefined, {
++          ...opt,
++          keySeparator: false,
++          ignoreJSONStructure: false,
++        });
++
++        if (!namespaceRoot || typeof namespaceRoot !== 'object') {
++          return lookupKeys;
++        }
++
++        const segments = possibleKey.split(keySeparator);
++        let offset = 0;
++
++        while (offset < segments.length - 1 && namespaceRoot[segments[offset]] === undefined) {
++          offset += 1;
++          lookupKeys.push(segments.slice(offset));
++        }
++
++        return lookupKeys;
++      };
++
+       const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
+       const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
+       const needsContextHandling =
+@@ -560,8 +592,11 @@ class Translator extends EventEmitter {
+           let possibleKey;
+           while ((possibleKey = finalKeys.pop())) {
+             if (!this.isValidLookup(found)) {
+-              exactUsedKey = possibleKey;
+-              found = this.getResource(code, ns, possibleKey, opt);
++              for (const lookupKey of getLookupKeys(possibleKey, code, ns)) {
++                exactUsedKey = Array.isArray(lookupKey) ? lookupKey.join(keySeparator) : lookupKey;
++                found = this.getResource(code, ns, lookupKey, opt);
++                if (this.isValidLookup(found)) break;
++              }
+             }
+           }
+         });
+diff --git a/test/runtime/translator/translator.translate.test.js b/test/runtime/translator/translator.translate.test.js
+index 11a4826..dcc152a 100644
+--- a/test/runtime/translator/translator.translate.test.js
++++ b/test/runtime/translator/translator.translate.test.js
+@@ -19,6 +19,12 @@ describe('Translator', () => {
+               test: 'deep_en',
+             },
+           },
++          ns1: {
++            child: 'ns1_root_child_en',
++            parent: {
++              child: 'ns1_parent_child_en',
++            },
++          },
+         },
+         de: {
+           translation: {
+@@ -61,6 +67,8 @@ describe('Translator', () => {
+           expected: 'deep_en',
+         },
+         { args: ['deep.test', { lng: 'en-US', nsSeparator: '.' }], expected: 'deep_en' },
++        { args: ['ns1:parent.child'], expected: 'ns1_parent_child_en' },
++        { args: ['ns1:missing.child'], expected: 'ns1_root_child_en' },
+       ];
+ 
+       tests.forEach((test) => {
+@@ -182,6 +190,17 @@ describe('Translator', () => {
+             usedParams: {},
+           },
+         },
++        {
++          args: ['ns1:missing.child', { returnDetails: true }],
++          expected: {
++            usedKey: 'missing.child',
++            res: 'ns1_root_child_en',
++            exactUsedKey: 'child',
++            usedLng: 'en',
++            usedNS: 'ns1',
++            usedParams: {},
++          },
++        },
+         {
+           args: ['translation:test', { returnDetails: true, testParam: 'test-param' }],
+           expected: {
+diff --git a/test/typescript/custom-types-default-ns-as-array/t.test.ts b/test/typescript/custom-types-default-ns-as-array/t.test.ts
+index 8f2ce43..31cf20a 100644
+--- a/test/typescript/custom-types-default-ns-as-array/t.test.ts
++++ b/test/typescript/custom-types-default-ns-as-array/t.test.ts
+@@ -55,6 +55,7 @@ describe('t', () => {
+       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
+ 
+       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
++      expectTypeOf(t('alternate:foobar.barfoo')).toEqualTypeOf<'barfoo'>();
+       expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
+     });
+ 
+@@ -62,8 +63,6 @@ describe('t', () => {
+       // @ts-expect-error
+       assertType(t('bar'));
+ 
+-      // @ts-expect-error
+-      assertType(t('alternate:foobar.barfoo'));
+       // @ts-expect-error
+       assertType(t('foobar'));
+ 
+diff --git a/test/typescript/custom-types/t.test.ts b/test/typescript/custom-types/t.test.ts
+index 80d65ed..af6430e 100644
+--- a/test/typescript/custom-types/t.test.ts
++++ b/test/typescript/custom-types/t.test.ts
+@@ -46,6 +46,7 @@ describe('t', () => {
+       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
+ 
+       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
++      expectTypeOf(t('alternate:foobar.barfoo')).toEqualTypeOf<'barfoo'>();
+       expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
+     });
+ 
+@@ -53,8 +54,6 @@ describe('t', () => {
+       // @ts-expect-error
+       assertType(t('bar'));
+ 
+-      // @ts-expect-error
+-      assertType(t('alternate:foobar.barfoo'));
+       // @ts-expect-error
+       assertType(t('foobar'));
+ 
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..cfc9f23 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -129,12 +129,14 @@ type ParseKeysByKeyPrefix<Keys, KPrefix> = KPrefix extends string
+     : never
+   : Keys;
+ 
+-type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
+-  ? UnionNsps extends keyof Keys
+-    ? AppendNamespace<UnionNsps, Keys[UnionNsps]>
+-    : never
++type ParseKeysByNamespacesForString<Ns, Keys> = Ns extends keyof Keys
++  ? AppendNamespace<Ns, Keys[Ns]>
+   : never;
+ 
++type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
++  ? ParseKeysByNamespacesForString<UnionNsps, Keys>
++  : ParseKeysByNamespacesForString<Ns, Keys>;
++
+ type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
+   ? never
+   : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
+@@ -259,13 +261,11 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
+   Key,
+   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
+     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+-    : // Process plurals only if count is provided inside options
+-      TOpt['count'] extends number
++    : TOpt['count'] extends number
+       ? TOpt['ordinal'] extends boolean
+         ? ParseTReturnPluralOrdinal<Res, Key>
+         : ParseTReturnPlural<Res, Key>
+-      : // otherwise access plain key without adding plural and ordinal suffixes
+-        Res extends readonly unknown[]
++      : Res extends readonly unknown[]
+         ? Key extends `${infer NKey extends number}`
+           ? Res[NKey]
+           : never

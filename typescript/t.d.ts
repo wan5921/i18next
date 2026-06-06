@@ -129,11 +129,13 @@ type ParseKeysByKeyPrefix<Keys, KPrefix> = KPrefix extends string
     : never
   : Keys;
 
-type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
-  ? UnionNsps extends keyof Keys
-    ? AppendNamespace<UnionNsps, Keys[UnionNsps]>
-    : never
+type ParseKeysByNamespacesForString<Ns, Keys> = Ns extends keyof Keys
+  ? AppendNamespace<Ns, Keys[Ns]>
   : never;
+
+type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
+  ? ParseKeysByNamespacesForString<UnionNsps, Keys>
+  : ParseKeysByNamespacesForString<Ns, Keys>;
 
 type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
   ? never
@@ -259,13 +261,11 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
   Key,
   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
-    : // Process plurals only if count is provided inside options
-      TOpt['count'] extends number
+    : TOpt['count'] extends number
       ? TOpt['ordinal'] extends boolean
         ? ParseTReturnPluralOrdinal<Res, Key>
         : ParseTReturnPlural<Res, Key>
-      : // otherwise access plain key without adding plural and ordinal suffixes
-        Res extends readonly unknown[]
+      : Res extends readonly unknown[]
         ? Key extends `${infer NKey extends number}`
           ? Res[NKey]
           : never

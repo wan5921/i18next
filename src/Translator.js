@@ -480,6 +480,38 @@ class Translator extends EventEmitter {
       let namespaces = extracted.namespaces;
       if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
 
+      const keySeparator =
+        opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
+      const shouldIteratePath =
+        keySeparator && isString(k) && k !== key && isString(key) && key.includes(keySeparator);
+      const getLookupKeys = (possibleKey, code, ns) => {
+        const lookupKeys = [possibleKey];
+
+        if (!shouldIteratePath || !isString(possibleKey) || !possibleKey.includes(keySeparator)) {
+          return lookupKeys;
+        }
+
+        const namespaceRoot = this.getResource(code, ns, undefined, {
+          ...opt,
+          keySeparator: false,
+          ignoreJSONStructure: false,
+        });
+
+        if (!namespaceRoot || typeof namespaceRoot !== 'object') {
+          return lookupKeys;
+        }
+
+        const segments = possibleKey.split(keySeparator);
+        let offset = 0;
+
+        while (offset < segments.length - 1 && namespaceRoot[segments[offset]] === undefined) {
+          offset += 1;
+          lookupKeys.push(segments.slice(offset));
+        }
+
+        return lookupKeys;
+      };
+
       const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
       const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
       const needsContextHandling =
@@ -560,8 +592,11 @@ class Translator extends EventEmitter {
           let possibleKey;
           while ((possibleKey = finalKeys.pop())) {
             if (!this.isValidLookup(found)) {
-              exactUsedKey = possibleKey;
-              found = this.getResource(code, ns, possibleKey, opt);
+              for (const lookupKey of getLookupKeys(possibleKey, code, ns)) {
+                exactUsedKey = Array.isArray(lookupKey) ? lookupKey.join(keySeparator) : lookupKey;
+                found = this.getResource(code, ns, lookupKey, opt);
+                if (this.isValidLookup(found)) break;
+              }
             }
           }
         });
