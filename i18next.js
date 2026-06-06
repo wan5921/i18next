@@ -303,6 +303,60 @@
     }
   }
 
+  class ResourceManager {
+    constructor(data, options) {
+      this.data = data;
+      this.options = options;
+    }
+    _parsePath(lng, ns) {
+      let path;
+      let namespace = ns;
+      if (lng.includes('.')) {
+        path = lng.split('.');
+        namespace = path[1];
+      } else {
+        path = [lng, ns];
+      }
+      return { path, namespace };
+    }
+    addBundle(lng, ns, resources, deep, overwrite, options = { silent: false, skipCopy: false }) {
+      const { path, namespace } = this._parsePath(lng, ns);
+      if (lng.includes('.')) {
+        deep = resources;
+        resources = ns;
+      }
+      if (this.options.addNamespaces) {
+        this.options.addNamespaces(namespace);
+      }
+      let pack = getPath(this.data, path) || {};
+      if (!options.skipCopy) resources = JSON.parse(JSON.stringify(resources));
+      if (deep) {
+        deepExtend(pack, resources, overwrite);
+      } else {
+        pack = {
+          ...pack,
+          ...resources
+        };
+      }
+      setPath(this.data, path, pack);
+      if (!options.silent && this.options.emit) {
+        this.options.emit('added', lng, namespace, resources);
+      }
+    }
+    removeBundle(lng, ns) {
+      const { namespace } = this._parsePath(lng, ns);
+      if (this.options.hasResourceBundle && this.options.hasResourceBundle(lng, namespace)) {
+        delete this.data[lng][namespace];
+      }
+      if (this.options.removeNamespaces) {
+        this.options.removeNamespaces(namespace);
+      }
+      if (this.options.emit) {
+        this.options.emit('removed', lng, namespace);
+      }
+    }
+  }
+
   class ResourceStore extends EventEmitter {
     constructor(data, options = {
       ns: ['translation'],
@@ -317,6 +371,12 @@
       if (this.options.ignoreJSONStructure === undefined) {
         this.options.ignoreJSONStructure = true;
       }
+      this.resourceManager = new ResourceManager(this.data, {
+        addNamespaces: (ns) => this.addNamespaces(ns),
+        removeNamespaces: (ns) => this.removeNamespaces(ns),
+        hasResourceBundle: (lng, ns) => this.hasResourceBundle(lng, ns),
+        emit: (event, ...args) => this.emit(event, ...args)
+      });
     }
     addNamespaces(ns) {
       if (!this.options.ns.includes(ns)) {
@@ -385,33 +445,10 @@
       silent: false,
       skipCopy: false
     }) {
-      let path = [lng, ns];
-      if (lng.includes('.')) {
-        path = lng.split('.');
-        deep = resources;
-        resources = ns;
-        ns = path[1];
-      }
-      this.addNamespaces(ns);
-      let pack = getPath(this.data, path) || {};
-      if (!options.skipCopy) resources = JSON.parse(JSON.stringify(resources));
-      if (deep) {
-        deepExtend(pack, resources, overwrite);
-      } else {
-        pack = {
-          ...pack,
-          ...resources
-        };
-      }
-      setPath(this.data, path, pack);
-      if (!options.silent) this.emit('added', lng, ns, resources);
+      this.resourceManager.addBundle(lng, ns, resources, deep, overwrite, options);
     }
     removeResourceBundle(lng, ns) {
-      if (this.hasResourceBundle(lng, ns)) {
-        delete this.data[lng][ns];
-      }
-      this.removeNamespaces(ns);
-      this.emit('removed', lng, ns);
+      this.resourceManager.removeBundle(lng, ns);
     }
     hasResourceBundle(lng, ns) {
       return this.getResource(lng, ns) !== undefined;
