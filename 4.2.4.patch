@@ -1,0 +1,52 @@
+diff --git a/src/PluralResolver.js b/src/PluralResolver.js
+index 8765978..a63df5b 100644
+--- a/src/PluralResolver.js
++++ b/src/PluralResolver.js
+@@ -81,6 +81,7 @@ class PluralResolver {
+   }
+ 
+   getSuffix(code, count, options = {}) {
++    console.log('language:', code, 'count:', count);
+     const rule = this.getRule(code, options);
+ 
+     if (rule) {
+diff --git a/test/runtime/pluralResolver.test.js b/test/runtime/pluralResolver.test.js
+index d02bc73..dabef15 100644
+--- a/test/runtime/pluralResolver.test.js
++++ b/test/runtime/pluralResolver.test.js
+@@ -150,6 +150,23 @@ describe('PluralResolver', () => {
+         expect.objectContaining({ type: expect.any(String) }),
+       );
+     });
++
++    it('correctly resolves real plural rules for Arabic (ar)', () => {
++      const locale = 'ar';
++      
++      // 0 -> zero
++      expect(pr.getSuffix(locale, 0)).toEqual('_zero');
++      // 1 -> one
++      expect(pr.getSuffix(locale, 1)).toEqual('_one');
++      // 2 -> two
++      expect(pr.getSuffix(locale, 2)).toEqual('_two');
++      // 3-10 -> few
++      expect(pr.getSuffix(locale, 3)).toEqual('_few');
++      // 11-99 -> many
++      expect(pr.getSuffix(locale, 11)).toEqual('_many');
++      // 100 -> other
++      expect(pr.getSuffix(locale, 100)).toEqual('_other');
++    });
+   });
+ 
+   describe('getPluralFormsOfKey()', () => {
+diff --git a/test/runtime/translator/translator.translate.plural.test.js b/test/runtime/translator/translator.translate.plural.test.js
+index 23764dc..dc38e39 100644
+--- a/test/runtime/translator/translator.translate.plural.test.js
++++ b/test/runtime/translator/translator.translate.plural.test.js
+@@ -4,7 +4,6 @@ import ResourceStore from '../../../src/ResourceStore.js';
+ import LanguageUtils from '../../../src/LanguageUtils';
+ import PluralResolver from '../../../src/PluralResolver';
+ import Interpolator from '../../../src/Interpolator';
+-
+ describe('Translator', () => {
+   describe('translate() with plural', () => {
+     /** @type {Translator} */

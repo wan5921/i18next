@@ -81,6 +81,7 @@ class PluralResolver {
   }
 
   getSuffix(code, count, options = {}) {
+    console.log('language:', code, 'count:', count);
     const rule = this.getRule(code, options);
 
     if (rule) {

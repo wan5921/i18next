@@ -150,6 +150,23 @@ describe('PluralResolver', () => {
         expect.objectContaining({ type: expect.any(String) }),
       );
     });
+
+    it('correctly resolves real plural rules for Arabic (ar)', () => {
+      const locale = 'ar';
+      
+      // 0 -> zero
+      expect(pr.getSuffix(locale, 0)).toEqual('_zero');
+      // 1 -> one
+      expect(pr.getSuffix(locale, 1)).toEqual('_one');
+      // 2 -> two
+      expect(pr.getSuffix(locale, 2)).toEqual('_two');
+      // 3-10 -> few
+      expect(pr.getSuffix(locale, 3)).toEqual('_few');
+      // 11-99 -> many
+      expect(pr.getSuffix(locale, 11)).toEqual('_many');
+      // 100 -> other
+      expect(pr.getSuffix(locale, 100)).toEqual('_other');
+    });
   });
 
   describe('getPluralFormsOfKey()', () => {

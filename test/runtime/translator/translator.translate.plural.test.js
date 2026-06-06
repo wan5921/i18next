@@ -4,7 +4,6 @@ import ResourceStore from '../../../src/ResourceStore.js';
 import LanguageUtils from '../../../src/LanguageUtils';
 import PluralResolver from '../../../src/PluralResolver';
 import Interpolator from '../../../src/Interpolator';
-
 describe('Translator', () => {
   describe('translate() with plural', () => {
     /** @type {Translator} */
