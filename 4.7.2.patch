@@ -1,0 +1,152 @@
+diff --git a/.github/workflows/CI.yml b/.github/workflows/CI.yml
+index 488085e..8425d5e 100644
+--- a/.github/workflows/CI.yml
++++ b/.github/workflows/CI.yml
+@@ -3,103 +3,60 @@ name: CI
+ on:
+   push:
+     branches:
+-      - master
++      - main
+   pull_request:
+-    # types: [opened, synchronize, reopened, ready_for_review]
+-    branches:
+-      - '**'
++
++permissions:
++  contents: read
+ 
+ jobs:
+-  codeQuality:
+-    name: Check code quality (lint and format)
++  test-and-build:
++    name: Test and build
+     runs-on: ubuntu-latest
+     steps:
+-      - uses: actions/checkout@v6
++      - name: Checkout
++        uses: actions/checkout@v4
+ 
+       - name: Setup Node.js
+-        uses: actions/setup-node@v6
++        uses: actions/setup-node@v4
+         with:
+           node-version-file: '.nvmrc'
+-          cache: 'npm'
++          cache: npm
+ 
+       - name: Install dependencies
+-        run: npm install
+-
+-      - name: Format check
+-        run: npm run format
+-
+-      - name: Lint
+-        run: npm run lint
+-
+-  build:
+-    name: Build
+-    runs-on: ubuntu-latest
+-    steps:
+-      - uses: actions/checkout@v6
++        run: npm ci
+ 
+-      - name: Setup Node.js
+-        uses: actions/setup-node@v6
+-        with:
+-          node-version-file: '.nvmrc'
+-          cache: 'npm'
+-
+-      - name: Install dependencies
+-        run: npm install
++      - name: Run tests
++        run: npm test
+ 
+       - name: Build
+         run: npm run build
+ 
+-  test:
+-    name: Test on node ${{ matrix.node }} and ${{ matrix.os }}
+-    runs-on: ${{ matrix.os }}
+-    strategy:
+-      matrix:
+-        node: ['24.x', '22.x', '20.x']
+-        os: [ubuntu-latest]
+-        # Collect coverage only for node 22 and ubuntu-latest, no need to run it twice
+-        # @see https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs#expanding-or-adding-matrix-configurations
+-        include:
+-          - collectCoverage: true
+-            node: '22.x'
+-            os: ubuntu-latest
++  coverage:
++    name: Upload coverage
++    runs-on: ubuntu-latest
++    permissions:
++      contents: read
++      id-token: write
+     steps:
+-      - uses: actions/checkout@v6
++      - name: Checkout
++        uses: actions/checkout@v4
+ 
+       - name: Setup Node.js
+-        uses: actions/setup-node@v6
++        uses: actions/setup-node@v4
+         with:
+-          node-version: ${{ matrix.node }}
+-          cache: 'npm'
++          node-version-file: '.nvmrc'
++          cache: npm
+ 
+       - name: Install dependencies
+-        run: npm install
+-
+-      - name: Test
+-        if: ${{ !matrix.collectCoverage }}
+-        run: npm test
++        run: npm ci
+ 
+-      - name: Test with coverage
+-        if: ${{ matrix.collectCoverage }}
++      - name: Run coverage
+         run: npm run test:coverage
+ 
+-      - name: Coveralls
+-        if: ${{ matrix.collectCoverage }}
+-        uses: coverallsapp/github-action@v2
+-
+-  testTypescript:
+-    name: Test typescript
+-    runs-on: ubuntu-latest
+-    steps:
+-      - uses: actions/checkout@v6
+-
+-      - name: Setup Node.js
+-        uses: actions/setup-node@v6
++      - name: Upload coverage to Codecov
++        uses: codecov/codecov-action@v5
+         with:
+-          node-version-file: '.nvmrc'
+-          cache: 'npm'
+-
+-      - name: Install dependencies
+-        run: npm install
+-
+-      - name: Test
+-        run: npm run test:typescript
++          files: ./coverage/lcov.info
++          fail_ci_if_error: true
++          use_oidc: true
+diff --git a/README.md b/README.md
+index 9700a96..16f6edd 100644
+--- a/README.md
++++ b/README.md
+@@ -1,7 +1,6 @@
+ # i18next: learn once - translate everywhere [![Post](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://x.com/intent/tweet?text=Awesome%20i18next:%20learn%20once%20-%20translate%20everywhere%20-%20the%20internationalization%20ecosystem%20&url=https://github.com/i18next/i18next&via=jamuhl&hashtags=i18n,javascript,dev)
+ 
+-[![CI](https://github.com/i18next/i18next/actions/workflows/CI.yml/badge.svg)](https://github.com/i18next/i18next/actions/workflows/CI.yml)
+-[![Coveralls](https://img.shields.io/coveralls/i18next/i18next/master.svg?style=flat-square)](https://coveralls.io/github/i18next/i18next)
++[![Tests](https://github.com/i18next/i18next/actions/workflows/CI.yml/badge.svg)](https://github.com/i18next/i18next/actions/workflows/CI.yml)
+ [![Package Quality](https://packagequality.com/shield/i18next.svg)](https://packagequality.com/#?package=i18next)
+ [![cdnjs version](https://img.shields.io/cdnjs/v/i18next.svg?style=flat-square)](https://cdnjs.com/libraries/i18next)
+ [![npm version](https://img.shields.io/npm/v/i18next.svg?style=flat-square)](https://www.npmjs.com/package/i18next)
