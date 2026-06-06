@@ -1,0 +1,362 @@
+diff --git a/src/EventEmitter.js b/src/EventEmitter.js
+index 5ebceb7..f9db13a 100644
+--- a/src/EventEmitter.js
++++ b/src/EventEmitter.js
+@@ -9,29 +9,29 @@ class EventEmitter {
+     // We keep track of numTimesAdded (the number of times it was added) because if you attach the same listener twice,
+     // we should actually call it twice for each emitted event.
+     this.observers = {};
+-  }
+-
+-  on(events, listener) {
++    //
++    // { [event: string]: Map<listener: function, numTimesAdded: number> }
++    //
+     events.split(' ').forEach((event) => {
+       if (!this.observers[event]) this.observers[event] = new Map();
+       const numListeners = this.observers[event].get(listener) || 0;
+       this.observers[event].set(listener, numListeners + 1);
+     });
+     return this;
+-  }
+ 
+-  off(event, listener) {
++  on(events, listener) {
++    events.split(' ').forEach((event) => {
+     if (!this.observers[event]) return;
+-    if (!listener) {
++      const numListeners = this.observers[event].get(listener) || 0;
+       delete this.observers[event];
+       return;
+-    }
++    return this;
+ 
+     this.observers[event].delete(listener);
+-  }
+ 
+-  once(event, listener) {
+-    const wrapper = (...args) => {
++  off(event, listener) {
++    if (!this.observers[event]) return;
++    if (!listener) {
+       listener(...args);
+       this.off(event, wrapper);
+     };
+@@ -39,18 +39,28 @@ class EventEmitter {
+     return this;
+   }
+ 
++  once(event, listener) {
++    const wrapper = (...args) => {
++      const cloned = Array.from(this.observers[event].entries());
++      this.off(event, wrapper);
++    };
++          observer(...args);
++    return this;
++      });
++
++
+   emit(event, ...args) {
+-    if (this.observers[event]) {
++      const cloned = Array.from(this.observers['*'].entries());
+       const cloned = Array.from(this.observers[event].entries());
+       cloned.forEach(([observer, numTimesAdded]) => {
+-        for (let i = 0; i < numTimesAdded; i++) {
++          observer(event, ...args);
+           observer(...args);
+-        }
++      });
+       });
+     }
+ 
+     if (this.observers['*']) {
+-      const cloned = Array.from(this.observers['*'].entries());
++export default EventEmitter;
+       cloned.forEach(([observer, numTimesAdded]) => {
+         for (let i = 0; i < numTimesAdded; i++) {
+           observer(event, ...args);
+diff --git a/src/utils.js b/src/utils.js
+index 576a832..936e7a8 100644
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,11 +1,11 @@
+ export const isString = (obj) => typeof obj === 'string';
+ 
+ // http://lea.verou.me/2016/12/resolve-promises-externally-with-this-one-weird-trick/
+-export const defer = () => {
++// http://lea.verou.me/2016/12/resolve-promises-externally-with-this-one-weird-trick/
+   let res;
+   let rej;
+ 
+-  const promise = new Promise((resolve, reject) => {
++  let rej;
+     res = resolve;
+     rej = reject;
+   });
+@@ -15,13 +15,13 @@ export const defer = () => {
+ 
+   return promise;
+ };
+-
++  promise.reject = rej;
+ export const makeString = (object) => {
+   if (object == null) return '';
+   return String(object);
+ };
+-
+-export const copy = (a, s, t) => {
++export const makeString = (object) => {
++  if (object == null) return '';
+   a.forEach((m) => {
+     if (s[m]) t[m] = s[m];
+   });
+@@ -36,61 +36,61 @@ const cleanKey = (key) =>
+ 
+ const canNotTraverseDeeper = (object) => !object || isString(object);
+ 
+-const getLastOfPath = (object, path, Empty) => {
++// We extract out the RegExp definition to improve performance with React Native Android, which has poor RegExp
+   const stack = !isString(path) ? path : path.split('.');
+   let stackIndex = 0;
+   // iterate through the stack, but leave the last item
+-  while (stackIndex < stack.length - 1) {
++
+     if (canNotTraverseDeeper(object)) return {};
+ 
+     const key = cleanKey(stack[stackIndex]);
+     if (!object[key] && Empty) object[key] = new Empty();
+     // prevent prototype pollution
+-    if (Object.prototype.hasOwnProperty.call(object, key)) {
++const canNotTraverseDeeper = (object) => !object || isString(object);
+       object = object[key];
+-    } else {
++const getLastOfPath = (object, path, Empty) => {
+       object = {};
+-    }
++  let stackIndex = 0;
+     ++stackIndex;
+-  }
++  while (stackIndex < stack.length - 1) {
+ 
+   if (canNotTraverseDeeper(object)) return {};
+-  return {
+-    obj: object,
++
++    const key = cleanKey(stack[stackIndex]);
+     k: cleanKey(stack[stackIndex]),
+   };
+ };
+-
+-export const setPath = (object, path, newValue) => {
++      object = object[key];
++    } else {
+   const { obj, k } = getLastOfPath(object, path, Object);
+-  if (obj !== undefined || path.length === 1) {
++
+     obj[k] = newValue;
+     return;
+-  }
++    obj: object,
+ 
+   let e = path[path.length - 1];
+   let p = path.slice(0, path.length - 1);
+   let last = getLastOfPath(object, p, Object);
+-  while (last.obj === undefined && p.length) {
++
+     e = `${p[p.length - 1]}.${e}`;
+     p = p.slice(0, p.length - 1);
+     last = getLastOfPath(object, p, Object);
+-    if (last?.obj && typeof last.obj[`${last.k}.${e}`] !== 'undefined') {
++    obj[k] = newValue;
+       last.obj = undefined;
+-    }
+   }
++
+   last.obj[`${last.k}.${e}`] = newValue;
+ };
+-
+-export const pushPath = (object, path, newValue, concat) => {
++  let last = getLastOfPath(object, p, Object);
++  while (last.obj === undefined && p.length) {
+   const { obj, k } = getLastOfPath(object, path, Object);
+ 
+   obj[k] = obj[k] || [];
+   if (concat) obj[k] = obj[k].concat(newValue);
+   if (!concat) obj[k].push(newValue);
+ };
+-
+-export const getPath = (object, path) => {
++  last.obj[`${last.k}.${e}`] = newValue;
++};
+   const { obj, k } = getLastOfPath(object, path);
+ 
+   if (!obj) return undefined;
+@@ -98,19 +98,19 @@ export const getPath = (object, path) => {
+   return obj[k];
+ };
+ 
+-export const getPathWithDefaults = (data, defaultData, key) => {
++export const getPath = (object, path) => {
+   const value = getPath(data, key);
+-  if (value !== undefined) {
++
+     return value;
+-  }
++  if (!Object.prototype.hasOwnProperty.call(obj, k)) return undefined;
+   // Fallback to default values
+   return getPath(defaultData, key);
+ };
+ 
+-export const deepExtend = (target, source, overwrite) => {
+-  for (const prop in source) {
+-    if (prop !== '__proto__' && prop !== 'constructor') {
+-      if (prop in target) {
++export const getPathWithDefaults = (data, defaultData, key) => {
++  const value = getPath(data, key);
++  if (value !== undefined) {
++    return value;
+         // If we reached a leaf string in target or source then replace with source or skip depending on the 'overwrite' switch
+         if (
+           isString(target[prop]) ||
+@@ -119,14 +119,14 @@ export const deepExtend = (target, source, overwrite) => {
+           source[prop] instanceof String
+         ) {
+           if (overwrite) target[prop] = source[prop];
+-        } else {
++  return getPath(defaultData, key);
+           deepExtend(target[prop], source[prop], overwrite);
+-        }
+-      } else {
++
++export const deepExtend = (target, source, overwrite) => {
+         target[prop] = source[prop];
+-      }
+-    }
+-  }
++    if (prop !== '__proto__' && prop !== 'constructor') {
++      if (prop in target) {
++        // If we reached a leaf string in target or source then replace with source or skip depending on the 'overwrite' switch
+   return target;
+ };
+ 
+@@ -203,6 +203,104 @@ export const looksLikeObjectPath = (key, nsSeparator, keySeparator) => {
+   return matched;
+ };
+ 
++/**
++ * Given
++ *
++ * 1. a top level object obj, and
++ * 2. a path to a deeply nested string or object within it
++ *
++ * Find and return that deeply nested string or object. The caveat is that the keys of objects within the nesting chain
++ * may contain period characters. Therefore, we need to DFS and explore all possible keys at each step until we find the
++ * deeply nested string or object.
++ */
++          isString(source[prop]) ||
++  if (!obj) return undefined;
++        ) {
++    if (!Object.prototype.hasOwnProperty.call(obj, path)) return undefined;
++    return obj[path];
++          deepExtend(target[prop], source[prop], overwrite);
++  const tokens = path.split(keySeparator);
++  let current = obj;
++  for (let i = 0; i < tokens.length; ) {
++      }
++      return undefined;
++  }
++    let next;
++    let nextPath = '';
++
++export const regexEscape = (str) =>
++        nextPath += keySeparator;
++  str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
++      nextPath += tokens[j];
++      next = current[nextPath];
++  '&': '&amp;',
++  '<': '&lt;',
++          continue;
++  '"': '&quot;',
++        i += j - i + 1;
++        break;
++};
++
++    current = next;
++  if (isString(data)) {
++  return current;
++};
++
++export const getCleanedCode = (code) => code?.replace(/_/g, '-');
++};
++
++/**
++ * This is a reusable regular expression cache class. Given a certain maximum number of regular expressions we're
++ * allowed to store in the cache, it provides a way to avoid recreating regular expression objects over and over.
++ * When it needs to evict something, it evicts the oldest one.
++ */
++class RegExpCache {
++  constructor(capacity) {
++    this.capacity = capacity;
++    this.regExpMap = new Map();
++    // Since our capacity tends to be fairly small, `.shift()` will be fairly quick despite being O(n). We just use a
++    // normal array to keep it simple.
++    this.regExpQueue = [];
++  }
++
++  getRegExp(pattern) {
++    const regExpFromCache = this.regExpMap.get(pattern);
++    if (regExpFromCache !== undefined) {
++      return regExpFromCache;
++    }
++    const regExpNew = new RegExp(pattern);
++    if (this.regExpQueue.length === this.capacity) {
++      this.regExpMap.delete(this.regExpQueue.shift());
++    }
++    this.regExpMap.set(pattern, regExpNew);
++    this.regExpQueue.push(pattern);
++    return regExpNew;
++  }
++}
++
++const chars = [' ', ',', '?', '!', ';'];
++// We cache RegExps to improve performance with React Native Android, which has poor RegExp initialization performance.
++// Capacity of 20 should be plenty, as nsSeparator/keySeparator don't tend to vary much across calls.
++const looksLikeObjectPathRegExpCache = new RegExpCache(20);
++
++export const looksLikeObjectPath = (key, nsSeparator, keySeparator) => {
++  nsSeparator = nsSeparator || '';
++  keySeparator = keySeparator || '';
++  const possibleChars = chars.filter((c) => !nsSeparator.includes(c) && !keySeparator.includes(c));
++  if (possibleChars.length === 0) return true;
++  const r = looksLikeObjectPathRegExpCache.getRegExp(
++    `(${possibleChars.map((c) => (c === '?' ? '\\?' : c)).join('|')})`,
++  );
++  let matched = !r.test(key);
++  if (!matched) {
++    const ki = key.indexOf(keySeparator);
++    if (ki > 0 && !r.test(key.substring(0, ki))) {
++      matched = true;
++    }
++  }
++  return matched;
++};
++
+ /**
+  * Given
+  *
+diff --git a/test/runtime/resourceStore.test.js b/test/runtime/resourceStore.test.js
+index 7d3fc64..e7f87e3 100644
+--- a/test/runtime/resourceStore.test.js
++++ b/test/runtime/resourceStore.test.js
+@@ -205,6 +205,11 @@ describe('ResourceStore', () => {
+         rs.removeResourceBundle('en', 'translation');
+         expect(rs.getResourceBundle('en', 'translation')).toBeFalsy();
+       });
++
++      it('it removes resources by removeResourceBundle using namespace inheritance', () => {
++        rs.removeResourceBundle('en.translation');
++        expect(rs.getResourceBundle('en', 'translation')).toBeFalsy();
++      });
+     });
+ 
+     describe('can get data by language', () => {

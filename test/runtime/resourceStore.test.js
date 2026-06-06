@@ -205,6 +205,11 @@ describe('ResourceStore', () => {
         rs.removeResourceBundle('en', 'translation');
         expect(rs.getResourceBundle('en', 'translation')).toBeFalsy();
       });
+
+      it('it removes resources by removeResourceBundle using namespace inheritance', () => {
+        rs.removeResourceBundle('en.translation');
+        expect(rs.getResourceBundle('en', 'translation')).toBeFalsy();
+      });
     });
 
     describe('can get data by language', () => {
