@@ -611,6 +611,20 @@ export type {
   SelectorKey,
 } from './typescript/t.js';
 
+export interface AutoLoadBackendOptions {
+  loadPath?: string;
+}
+
+export class AutoLoadBackend implements BackendModule&lt;AutoLoadBackendOptions&gt; {
+  constructor(services?: Services, options?: AutoLoadBackendOptions);
+  type: 'backend';
+  init(services: Services, backendOptions: AutoLoadBackendOptions, i18nextOptions: InitOptions): void;
+  read(language: string, namespace: string, callback: ReadCallback): void;
+  readMulti(languages: readonly string[], namespaces: readonly string[], callback: MultiReadCallback): void;
+  interpolate(str: string, values: object): string;
+  fetchResource(path: string, callback: ReadCallback): void;
+}
+
 declare const i18next: i18n;
 export default i18next;
 

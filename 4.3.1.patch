@@ -1,0 +1,37 @@
+diff --git a/index.d.ts b/index.d.ts
+index 373587c..02c62e5 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -611,6 +611,20 @@ export type {
+   SelectorKey,
+ } from './typescript/t.js';
+ 
++export interface AutoLoadBackendOptions {
++  loadPath?: string;
++}
++
++export class AutoLoadBackend implements BackendModule&lt;AutoLoadBackendOptions&gt; {
++  constructor(services?: Services, options?: AutoLoadBackendOptions);
++  type: 'backend';
++  init(services: Services, backendOptions: AutoLoadBackendOptions, i18nextOptions: InitOptions): void;
++  read(language: string, namespace: string, callback: ReadCallback): void;
++  readMulti(languages: readonly string[], namespaces: readonly string[], callback: MultiReadCallback): void;
++  interpolate(str: string, values: object): string;
++  fetchResource(path: string, callback: ReadCallback): void;
++}
++
+ declare const i18next: i18n;
+ export default i18next;
+ 
+diff --git a/src/index.js b/src/index.js
+index 742d986..193ffff 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,6 +1,7 @@
+ import i18next from './i18next.js';
+ 
+ export { default as keyFromSelector } from './selector.js';
++export { default as AutoLoadBackend } from './AutoLoadBackend.js';
+ 
+ export default i18next;
+ 

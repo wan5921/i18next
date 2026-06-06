@@ -1,6 +1,7 @@
 import i18next from './i18next.js';
 
 export { default as keyFromSelector } from './selector.js';
+export { default as AutoLoadBackend } from './AutoLoadBackend.js';
 
 export default i18next;
 
