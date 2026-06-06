@@ -1,0 +1,101 @@
+diff --git a/AutoLoadBackend.d.ts b/AutoLoadBackend.d.ts
+new file mode 100644
+index 0000000..d69bcc5
+--- /dev/null
++++ b/AutoLoadBackend.d.ts
+@@ -0,0 +1,23 @@
++import { BackendModule, ReadCallback, MultiReadCallback, Services, InitOptions } from 'i18next';
++
++export interface AutoLoadBackendOptions {
++  /**
++   * 动态加载的路径模板，默认为 'locales/{{lng}}/{{ns}}.json'
++   */
++  loadPath?: string;
++}
++
++export default class AutoLoadBackend implements BackendModule<AutoLoadBackendOptions> {
++  static type: 'backend';
++  type: 'backend';
++  services: Services;
++  options: AutoLoadBackendOptions;
++
++  constructor(services?: Services, backendOptions?: AutoLoadBackendOptions, i18nextOptions?: InitOptions);
++
++  init(services: Services, backendOptions: AutoLoadBackendOptions, i18nextOptions: InitOptions): void;
++
++  read(language: string, namespace: string, callback: ReadCallback): void;
++
++  readMulti?(languages: readonly string[], namespaces: readonly string[], callback: MultiReadCallback): void;
++}
+diff --git a/AutoLoadBackend.js b/AutoLoadBackend.js
+new file mode 100644
+index 0000000..5f7d134
+--- /dev/null
++++ b/AutoLoadBackend.js
+@@ -0,0 +1,66 @@
++class AutoLoadBackend {
++  constructor(services, backendOptions = {}, i18nextOptions = {}) {
++    this.init(services, backendOptions, i18nextOptions);
++  }
++
++  init(services, backendOptions = {}, i18nextOptions = {}) {
++    this.services = services;
++    this.options = {
++      loadPath: 'locales/{{lng}}/{{ns}}.json',
++      ...backendOptions
++    };
++  }
++
++  read(language, namespace, callback) {
++    const url = this.options.loadPath
++      .replace('{{lng}}', language)
++      .replace('{{ns}}', namespace);
++
++    fetch(url)
++      .then((response) => {
++        if (!response.ok) {
++          return callback(new Error(`Failed to load ${url}: ${response.statusText}`), false);
++        }
++        return response.json();
++      })
++      .then((data) => {
++        callback(null, data);
++      })
++      .catch((error) => {
++        callback(error, false);
++      });
++  }
++
++  // 实现 readMulti 支持批量加载资源
++  readMulti(languages, namespaces, callback) {
++    const promises = [];
++    
++    languages.forEach((lng) => {
++      namespaces.forEach((ns) => {
++        const url = this.options.loadPath
++          .replace('{{lng}}', lng)
++          .replace('{{ns}}', ns);
++        
++        promises.push(
++          fetch(url)
++            .then((res) => (res.ok ? res.json() : {}))
++            .then((data) => ({ lng, ns, data }))
++            .catch(() => ({ lng, ns, data: {} }))
++        );
++      });
++    });
++
++    Promise.all(promises).then((results) => {
++      const res = {};
++      results.forEach(({ lng, ns, data }) => {
++        if (!res[lng]) res[lng] = {};
++        res[lng][ns] = data;
++      });
++      callback(null, res);
++    });
++  }
++}
++
++AutoLoadBackend.type = 'backend';
++
++export default AutoLoadBackend;
