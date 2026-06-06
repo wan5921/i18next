@@ -53,7 +53,7 @@ class ResourceStore extends EventEmitter {
       }
     }
 
-    const result = getPath(this.data, path);
+    let result = getPath(this.data, path);
     if (!result && !ns && !key && lng.includes('.')) {
       lng = path[0];
       ns = path[1];
@@ -61,7 +61,31 @@ class ResourceStore extends EventEmitter {
     }
     if (result || !ignoreJSONStructure || !isString(key)) return result;
 
-    return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
+    // First try deepFind with the full key
+    result = deepFind(this.data?.[lng]?.[ns], key, keySeparator);
+    if (result !== undefined) return result;
+
+    // If no result and key has multiple parts, try progressively removing the first parts
+    if (isString(key) && key.includes(keySeparator)) {
+      const keyParts = key.split(keySeparator);
+      for (let i = 1; i < keyParts.length; i++) {
+        const fallbackKey = keyParts.slice(i).join(keySeparator);
+        const fallbackResult = deepFind(this.data?.[lng]?.[ns], fallbackKey, keySeparator);
+        if (fallbackResult !== undefined) {
+          return fallbackResult;
+        }
+        // Also check if the fallback path exists directly in the data structure
+        if (this.data?.[lng]?.[ns]) {
+          const fallbackPath = [lng, ns, ...keyParts.slice(i)];
+          const fallbackPathResult = getPath(this.data, fallbackPath);
+          if (fallbackPathResult !== undefined) {
+            return fallbackPathResult;
+          }
+        }
+      }
+    }
+
+    return undefined;
   }
 
   addResource(lng, ns, key, value, options = { silent: false }) {

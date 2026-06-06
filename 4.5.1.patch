@@ -1,0 +1,61 @@
+diff --git a/src/ResourceStore.js b/src/ResourceStore.js
+index 1dd8a02..4d9571e 100644
+--- a/src/ResourceStore.js
++++ b/src/ResourceStore.js
+@@ -53,7 +53,7 @@ class ResourceStore extends EventEmitter {
+       }
+     }
+ 
+-    const result = getPath(this.data, path);
++    let result = getPath(this.data, path);
+     if (!result && !ns && !key && lng.includes('.')) {
+       lng = path[0];
+       ns = path[1];
+@@ -61,7 +61,31 @@ class ResourceStore extends EventEmitter {
+     }
+     if (result || !ignoreJSONStructure || !isString(key)) return result;
+ 
+-    return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
++    // First try deepFind with the full key
++    result = deepFind(this.data?.[lng]?.[ns], key, keySeparator);
++    if (result !== undefined) return result;
++
++    // If no result and key has multiple parts, try progressively removing the first parts
++    if (isString(key) && key.includes(keySeparator)) {
++      const keyParts = key.split(keySeparator);
++      for (let i = 1; i < keyParts.length; i++) {
++        const fallbackKey = keyParts.slice(i).join(keySeparator);
++        const fallbackResult = deepFind(this.data?.[lng]?.[ns], fallbackKey, keySeparator);
++        if (fallbackResult !== undefined) {
++          return fallbackResult;
++        }
++        // Also check if the fallback path exists directly in the data structure
++        if (this.data?.[lng]?.[ns]) {
++          const fallbackPath = [lng, ns, ...keyParts.slice(i)];
++          const fallbackPathResult = getPath(this.data, fallbackPath);
++          if (fallbackPathResult !== undefined) {
++            return fallbackPathResult;
++          }
++        }
++      }
++    }
++
++    return undefined;
+   }
+ 
+   addResource(lng, ns, key, value, options = { silent: false }) {
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..803be73 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -258,7 +258,9 @@ type ParseTReturnWithFallback<Key, Val> = Val extends ''
+ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallback<
+   Key,
+   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
+-    ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
++    ? // Try to parse with the first segment first, then fallback to parsing the rest as a top-level key
++      | ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
++      | ParseTReturn<RestKey, Res, TOpt>
+     : // Process plurals only if count is provided inside options
+       TOpt['count'] extends number
+       ? TOpt['ordinal'] extends boolean

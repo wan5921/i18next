@@ -258,7 +258,9 @@ type ParseTReturnWithFallback<Key, Val> = Val extends ''
 type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallback<
   Key,
   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
-    ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+    ? // Try to parse with the first segment first, then fallback to parsing the rest as a top-level key
+      | ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+      | ParseTReturn<RestKey, Res, TOpt>
     : // Process plurals only if count is provided inside options
       TOpt['count'] extends number
       ? TOpt['ordinal'] extends boolean
