@@ -1,0 +1,253 @@
+diff --git a/AutoLoadBackend.d.ts b/AutoLoadBackend.d.ts
+new file mode 100644
+index 0000000..4ecaadd
+--- /dev/null
++++ b/AutoLoadBackend.d.ts
+@@ -0,0 +1,53 @@
++import type { BackendModule, CallbackError, i18n, ResourceKey } from 'i18next';
++
++export interface AutoLoadRequestContext {
++  language: string;
++  namespace: string;
++  url: string;
++}
++
++export interface AutoLoadBackendOptions {
++  loadPath?: string;
++  request?: (url: string, context: AutoLoadRequestContext) => Promise<unknown> | unknown;
++  parse?: (data: unknown, context: AutoLoadRequestContext) => ResourceKey;
++}
++
++export interface AutoLoadEventPayloadObject {
++  lng?: string;
++  language?: string;
++  lngs?: readonly string[];
++  languages?: readonly string[];
++  ns?: string | readonly string[];
++  namespace?: string;
++  namespaces?: readonly string[];
++  reload?: boolean;
++  callback?: (error?: CallbackError) => void;
++}
++
++export type AutoLoadEventPayload =
++  | string
++  | readonly string[]
++  | AutoLoadEventPayloadObject;
++
++export interface AutoLoadEventsPluginOptions {
++  eventName?: string;
++}
++
++export interface AutoLoadEventsPlugin {
++  type: '3rdParty';
++  init(i18next: i18n): void;
++}
++
++export default class AutoLoadBackend implements BackendModule<AutoLoadBackendOptions> {
++  static type: 'backend';
++  type: 'backend';
++  constructor(services?: unknown, options?: AutoLoadBackendOptions, i18nextOptions?: unknown);
++  init(services?: unknown, options?: AutoLoadBackendOptions, i18nextOptions?: unknown): void;
++  read(language: string, namespace: string, callback: (error: CallbackError, data: ResourceKey | false) => void): void;
++}
++
++export declare function createAutoLoadEventsPlugin(
++  options?: AutoLoadEventsPluginOptions,
++): AutoLoadEventsPlugin;
++
++export declare const AutoLoadEventsPlugin: AutoLoadEventsPlugin;
+diff --git a/AutoLoadBackend.js b/AutoLoadBackend.js
+new file mode 100644
+index 0000000..1a15fe6
+--- /dev/null
++++ b/AutoLoadBackend.js
+@@ -0,0 +1,151 @@
++const DEFAULT_LOAD_PATH = 'locales/{{lng}}/{{ns}}.json';
++
++const toArray = (value) => {
++  if (Array.isArray(value)) return value.filter(Boolean);
++  if (value === undefined || value === null || value === '') return [];
++  return [value];
++};
++
++const unique = (items) => [...new Set(items)];
++
++const interpolate = (template, language, namespace) => {
++  return template
++    .replace(/\{\{\s*lng\s*\}\}/g, encodeURIComponent(language))
++    .replace(/\{\{\s*ns\s*\}\}/g, encodeURIComponent(namespace));
++};
++
++const normalizeError = (error) => {
++  if (error instanceof Error) return error;
++  return new Error(typeof error === 'string' ? error : 'failed loading translations');
++};
++
++const defaultRequest = async (url) => {
++  if (typeof fetch !== 'function') {
++    throw new Error('AutoLoadBackend requires a request option when fetch is unavailable');
++  }
++
++  const response = await fetch(url);
++
++  if (!response.ok) {
++    throw new Error(`failed loading ${url}: ${response.status} ${response.statusText}`);
++  }
++
++  return response.json();
++};
++
++const defaultParse = (data) => {
++  if (typeof data === 'string') return JSON.parse(data);
++  return data;
++};
++
++const normalizeLoadPayload = (payload, i18next) => {
++  const currentLanguage = i18next.resolvedLanguage || i18next.language;
++
++  if (typeof payload === 'string' || Array.isArray(payload)) {
++    return {
++      languages: toArray(currentLanguage),
++      namespaces: unique(toArray(payload)),
++      reload: false,
++      callback: undefined,
++    };
++  }
++
++  if (!payload || typeof payload !== 'object') {
++    return {
++      languages: toArray(currentLanguage),
++      namespaces: [],
++      reload: false,
++      callback: undefined,
++    };
++  }
++
++  const languages = unique([
++    ...toArray(payload.lng),
++    ...toArray(payload.language),
++    ...toArray(payload.lngs),
++    ...toArray(payload.languages),
++  ]);
++  const namespaces = unique([
++    ...toArray(payload.ns),
++    ...toArray(payload.namespace),
++    ...toArray(payload.namespaces),
++  ]);
++
++  return {
++    languages: languages.length ? languages : toArray(currentLanguage),
++    namespaces,
++    reload: Boolean(payload.reload),
++    callback: typeof payload.callback === 'function' ? payload.callback : undefined,
++  };
++};
++
++class AutoLoadBackend {
++  static type = 'backend';
++
++  constructor(services, options = {}, i18nextOptions = {}) {
++    this.init(services, options, i18nextOptions);
++  }
++
++  init(services, options = {}, i18nextOptions = {}) {
++    this.services = services;
++    this.i18nextOptions = i18nextOptions;
++    this.options = {
++      loadPath: DEFAULT_LOAD_PATH,
++      request: defaultRequest,
++      parse: defaultParse,
++      ...options,
++    };
++  }
++
++  read(language, namespace, callback) {
++    const url = interpolate(this.options.loadPath, language, namespace);
++
++    Promise.resolve(this.options.request(url, { language, namespace, url }))
++      .then((data) => this.options.parse(data, { language, namespace, url }))
++      .then((resource) => {
++        if (resource && typeof resource === 'object' && !Array.isArray(resource)) {
++          callback(null, resource);
++          return;
++        }
++
++        callback(new Error(`AutoLoadBackend expected ${url} to resolve to a JSON object`), false);
++      })
++      .catch((error) => {
++        callback(normalizeError(error), false);
++      });
++  }
++}
++
++export const createAutoLoadEventsPlugin = (options = {}) => {
++  return {
++    type: '3rdParty',
++    init(i18next) {
++      const eventName = options.eventName || 'load';
++
++      i18next.on(eventName, (payload) => {
++        const connector = i18next.services && i18next.services.backendConnector;
++        const request = normalizeLoadPayload(payload, i18next);
++
++        if (!connector || !request.languages.length || !request.namespaces.length) {
++          if (request.callback) request.callback();
++          return;
++        }
++
++        const done = (error) => {
++          if (request.callback) request.callback(error || undefined);
++        };
++
++        if (request.reload) {
++          connector.reload(request.languages, request.namespaces, done);
++          return;
++        }
++
++        connector.load(request.languages, request.namespaces, done);
++      });
++    },
++  };
++};
++
++export const AutoLoadEventsPlugin = createAutoLoadEventsPlugin();
++
++export default AutoLoadBackend;
+diff --git a/index.d.ts b/index.d.ts
+index 373587c..974460b 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -611,20 +611,6 @@ export type {
+   SelectorKey,
+ } from './typescript/t.js';
+ 
+-declare const i18next: i18n;
+-export default i18next;
+-
+-export const createInstance: i18n['createInstance'];
+-
+-export const dir: i18n['dir'];
+-export const init: i18n['init'];
+-export const loadResources: i18n['loadResources'];
+-export const reloadResources: i18n['reloadResources'];
+-export const use: i18n['use'];
+-export const changeLanguage: i18n['changeLanguage'];
+-export const getFixedT: i18n['getFixedT'];
+-export const t: i18n['t'];
+-export const exists: i18n['exists'];
+ export const setDefaultNamespace: i18n['setDefaultNamespace'];
+ export const hasLoadedNamespace: i18n['hasLoadedNamespace'];
+ export const loadNamespaces: i18n['loadNamespaces'];
+diff --git a/src/index.js b/src/index.js
+index 742d986..b4bce46 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,7 +1,6 @@
+ import i18next from './i18next.js';
+ 
+ export { default as keyFromSelector } from './selector.js';
+-
+ export default i18next;
+ 
+ export const createInstance = i18next.createInstance;
