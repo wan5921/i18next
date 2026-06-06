@@ -1,0 +1,45 @@
+diff --git a/test/pluralResolver.spec.js b/test/pluralResolver.spec.js
+new file mode 100644
+index 0000000..aa0633d
+--- /dev/null
++++ b/test/pluralResolver.spec.js
+@@ -0,0 +1,39 @@
++import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
++import PluralResolver from '../src/PluralResolver.js';
++import LanguageUtils from '../src/LanguageUtils.js';
++
++describe('PluralResolver', () => {
++  let pr;
++
++  beforeEach(() => {
++    const lu = new LanguageUtils({ fallbackLng: 'en' });
++    pr = new PluralResolver(lu, { prepend: '_' });
++  });
++
++  afterEach(() => {
++    vi.restoreAllMocks();
++  });
++
++  it('should resolve ru plurals and handle options.postProcess correctly', () => {
++    // 3. 使用 vi.spyOn 监控 getSuffix调用次数
++    const getSuffixSpy = vi.spyOn(pr, 'getSuffix');
++
++    // 1. 测试俄语（ru）中 count 为 1、2、5 时的返回值
++    expect(pr.getSuffix('ru', 1)).toBe('_one');
++    
++    // 4. 确保测试覆盖 rule 映射中 'few' 和 'many' 的分支逻辑
++    // count 为 2 命中 'few'
++    expect(pr.getSuffix('ru', 2)).toBe('_few');
++    // count 为 5 命中 'many'
++    expect(pr.getSuffix('ru', 5)).toBe('_many');
++
++    // 2. 模拟 options.postProcess 为空和冲突的场景
++    // options.postProcess 为空
++    expect(pr.getSuffix('ru', 2, { postProcess: '' })).toBe('_few');
++    // options.postProcess 为冲突的场景
++    expect(pr.getSuffix('ru', 5, { postProcess: 'conflict' })).toBe('_many');
++
++    // 验证 getSuffix 被调用了 5 次
++    expect(getSuffixSpy).toHaveBeenCalledTimes(5);
++  });
++});
