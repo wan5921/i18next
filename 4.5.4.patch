@@ -1,0 +1,234 @@
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..904c80c 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -460,58 +460,58 @@ class Translator extends EventEmitter {
+ 
+   resolve(keys, opt = {}) {
+     let found;
+-    let usedKey; // plain key
+-    let exactUsedKey; // key with context / plural
++    let usedKey;
++    let exactUsedKey;
+     let usedLng;
+     let usedNS;
+ 
+     if (isString(keys)) keys = [keys];
+-    if (Array.isArray(keys))
+-      keys = keys.map((k) =>
+-        typeof k === 'function' ? keysFromSelector(k, { ...this.options, ...opt }) : k,
+-      );
+ 
+-    // forEach possible key
++    const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
++    const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
++    const needsContextHandling =
++      opt.context !== undefined &&
++      (isString(opt.context) || typeof opt.context === 'number') &&
++      opt.context !== '';
++
++    const codes = opt.lngs
++      ? opt.lngs
++      : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
++
+     keys.forEach((k) => {
+       if (this.isValidLookup(found)) return;
+-      const extracted = this.extractFromKey(k, opt);
+-      const key = extracted.key;
+-      usedKey = key;
+-      let namespaces = extracted.namespaces;
+-      if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
+ 
+-      const needsPluralHandling = opt.count !== undefined && !isString(opt.count);
+-      const needsZeroSuffixLookup = needsPluralHandling && !opt.ordinal && opt.count === 0;
+-      const needsContextHandling =
+-        opt.context !== undefined &&
+-        (isString(opt.context) || typeof opt.context === 'number') &&
+-        opt.context !== '';
++      let key;
++      let namespaces;
++
++      if (Array.isArray(k)) {
++        const joined = k.join(this.options.keySeparator || '.');
++        const extracted = this.extractFromKey(joined, opt);
++        key = k;
++        usedKey = joined;
++        namespaces = extracted.namespaces;
++      } else if (typeof k === 'function') {
++        const resolved = keysFromSelector(k, { ...this.options, ...opt });
++        const extracted = this.extractFromKey(resolved, opt);
++        key = extracted.key;
++        usedKey = key;
++        namespaces = extracted.namespaces;
++      } else {
++        const extracted = this.extractFromKey(k, opt);
++        key = extracted.key;
++        usedKey = key;
++        namespaces = extracted.namespaces;
++      }
+ 
+-      const codes = opt.lngs
+-        ? opt.lngs
+-        : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
++      if (this.options.fallbackNS) namespaces = namespaces.concat(this.options.fallbackNS);
+ 
+       namespaces.forEach((ns) => {
+         if (this.isValidLookup(found)) return;
+-        usedNS = ns;
+-
+-        if (
+-          !this.checkedLoadedFor[`${codes[0]}-${ns}`] &&
+-          this.utils?.hasLoadedNamespace &&
+-          !this.utils?.hasLoadedNamespace(usedNS)
+-        ) {
+-          this.checkedLoadedFor[`${codes[0]}-${ns}`] = true;
+-          this.logger.warn(
+-            `key "${usedKey}" for languages "${codes.join(
+-              ', ',
+-            )}" won't get resolved as namespace "${usedNS}" was not yet loaded`,
+-            'This means something IS WRONG in your setup. You access the t function before i18next.init / i18next.loadNamespace / i18next.changeLanguage was done. Wait for the callback or Promise to resolve before accessing it!!!',
+-          );
+-        }
+ 
+         codes.forEach((code) => {
+           if (this.isValidLookup(found)) return;
+           usedLng = code;
++          usedNS = ns;
+ 
+           const finalKeys = [key];
+ 
+@@ -523,7 +523,7 @@ class Translator extends EventEmitter {
+               pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
+             const zeroSuffix = `${this.options.pluralSeparator}zero`;
+             const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+-            // get key for plural if needed
++
+             if (needsPluralHandling) {
+               if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                 finalKeys.push(
+@@ -536,12 +536,10 @@ class Translator extends EventEmitter {
+               }
+             }
+ 
+-            // get key for context if needed
+             if (needsContextHandling) {
+               const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
+               finalKeys.push(contextKey);
+ 
+-              // get key for context + plural if needed
+               if (needsPluralHandling) {
+                 if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                   finalKeys.push(
+@@ -556,7 +554,6 @@ class Translator extends EventEmitter {
+             }
+           }
+ 
+-          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+           let possibleKey;
+           while ((possibleKey = finalKeys.pop())) {
+             if (!this.isValidLookup(found)) {
+@@ -564,6 +561,21 @@ class Translator extends EventEmitter {
+               found = this.getResource(code, ns, possibleKey, opt);
+             }
+           }
++
++          if (
++            !this.isValidLookup(found) &&
++            isString(key) &&
++            key.includes(this.options.keySeparator || '.')
++          ) {
++            const sep = this.options.keySeparator || '.';
++            const parts = key.split(sep);
++            const leafKey = parts[parts.length - 1];
++            const nsFallbackFound = this.getResource(code, ns, leafKey, opt);
++            if (this.isValidLookup(nsFallbackFound)) {
++              exactUsedKey = leafKey;
++              found = nsFallbackFound;
++            }
++          }
+         });
+       });
+     });
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..ad0b150 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -95,15 +95,14 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
+     : Key
+   : never;
+ 
+-type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
+-  ? WithReturnObjects extends true
+-    ? keyof Res | KeysBuilderWithReturnObjects<Res>
+-    : KeysBuilderWithoutReturnObjects<Res>
+-  : string;
++type KeysBuilder<Res, WithReturnObjects = _ReturnObjects> = WithReturnObjects extends true
++  ? keyof Res | KeysBuilderWithReturnObjects<Res>
++  : KeysBuilderWithoutReturnObjects<Res>;
+ 
+ type KeysWithReturnObjects = {
+   [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], true>>;
+ };
++
+ type KeysWithoutReturnObjects = {
+   [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], false>>;
+ };
+@@ -138,8 +137,10 @@ type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (in
+ type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
+   ? never
+   : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
+-    ? Keys[UnionFallbackNs]
+-    : Keys[_FallbackNamespace & string];
++    ? AppendNamespace<UnionFallbackNs, Keys[UnionFallbackNs & keyof Keys]>
++    : _FallbackNamespace extends string
++      ? AppendNamespace<_FallbackNamespace, Keys[_FallbackNamespace & keyof Keys]>
++      : never;
+ 
+ export type FilterKeysByContext<Keys, Context> = Context extends string
+   ? Keys extends
+@@ -259,17 +260,11 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
+   Key,
+   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
+     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+-    : // Process plurals only if count is provided inside options
+-      TOpt['count'] extends number
++    : TOpt['count'] extends number
+       ? TOpt['ordinal'] extends boolean
+         ? ParseTReturnPluralOrdinal<Res, Key>
+         : ParseTReturnPlural<Res, Key>
+-      : // otherwise access plain key without adding plural and ordinal suffixes
+-        Res extends readonly unknown[]
+-        ? Key extends `${infer NKey extends number}`
+-          ? Res[NKey]
+-          : never
+-        : Res[Key & keyof Res]
++      : Res[Key & keyof Res]
+ >;
+ 
+ type TReturnOptionalNull = _ReturnNull extends true ? null : never;
+@@ -327,6 +322,16 @@ type _FallbackParse<ActualKey, FallbackNS, TOpt extends TOptions> = [
+   ? never
+   : ParseTReturn<ActualKey, FallbackResourcesOf<FallbackNS, Resources>, TOpt>;
+ 
++type _ParseTReturnWithNsFallback<
++  RestKey,
++  Res,
++  TOpt extends TOptions,
++> = ParseTReturn<RestKey, Res, TOpt> extends RestKey
++  ? RestKey extends `${string}${_KeySeparator}${infer Leaf}`
++    ? ParseTReturn<Leaf, Res, TOpt>
++    : ParseTReturn<RestKey, Res, TOpt>
++  : ParseTReturn<RestKey, Res, TOpt>;
++
+ export type TFunctionReturn<
+   Ns extends Namespace,
+   Key,
+@@ -335,7 +340,7 @@ export type TFunctionReturn<
+   ActualKey = KeyWithContext<Key, TOpt>,
+ > = $IsResourcesDefined extends true
+   ? ActualKey extends `${infer Nsp}${_NsSeparator}${infer RestKey}`
+-    ? ParseTReturn<RestKey, Resources[Nsp & keyof Resources], TOpt>
++    ? _ParseTReturnWithNsFallback<RestKey, Resources[Nsp & keyof Resources], TOpt>
+     : $FirstNamespace<ActualNS> extends infer PrimaryNS
+       ? [PrimaryNS] extends [keyof Resources]
+         ? [_PrimaryParse<ActualKey, PrimaryNS & keyof Resources, TOpt>] extends [never]

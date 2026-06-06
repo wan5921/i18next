@@ -95,15 +95,14 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
     : Key
   : never;
 
-type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
-  ? WithReturnObjects extends true
-    ? keyof Res | KeysBuilderWithReturnObjects<Res>
-    : KeysBuilderWithoutReturnObjects<Res>
-  : string;
+type KeysBuilder<Res, WithReturnObjects = _ReturnObjects> = WithReturnObjects extends true
+  ? keyof Res | KeysBuilderWithReturnObjects<Res>
+  : KeysBuilderWithoutReturnObjects<Res>;
 
 type KeysWithReturnObjects = {
   [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], true>>;
 };
+
 type KeysWithoutReturnObjects = {
   [Ns in FlatNamespace]: WithOrWithoutPlural<KeysBuilder<Resources[Ns], false>>;
 };
@@ -138,8 +137,10 @@ type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (in
 type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
   ? never
   : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
-    ? Keys[UnionFallbackNs]
-    : Keys[_FallbackNamespace & string];
+    ? AppendNamespace<UnionFallbackNs, Keys[UnionFallbackNs & keyof Keys]>
+    : _FallbackNamespace extends string
+      ? AppendNamespace<_FallbackNamespace, Keys[_FallbackNamespace & keyof Keys]>
+      : never;
 
 export type FilterKeysByContext<Keys, Context> = Context extends string
   ? Keys extends
@@ -259,17 +260,11 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
   Key,
   Key extends `${infer K1}${_KeySeparator}${infer RestKey}`
     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
-    : // Process plurals only if count is provided inside options
-      TOpt['count'] extends number
+    : TOpt['count'] extends number
       ? TOpt['ordinal'] extends boolean
         ? ParseTReturnPluralOrdinal<Res, Key>
         : ParseTReturnPlural<Res, Key>
-      : // otherwise access plain key without adding plural and ordinal suffixes
-        Res extends readonly unknown[]
-        ? Key extends `${infer NKey extends number}`
-          ? Res[NKey]
-          : never
-        : Res[Key & keyof Res]
+      : Res[Key & keyof Res]
 >;
 
 type TReturnOptionalNull = _ReturnNull extends true ? null : never;
@@ -327,6 +322,16 @@ type _FallbackParse<ActualKey, FallbackNS, TOpt extends TOptions> = [
   ? never
   : ParseTReturn<ActualKey, FallbackResourcesOf<FallbackNS, Resources>, TOpt>;
 
+type _ParseTReturnWithNsFallback<
+  RestKey,
+  Res,
+  TOpt extends TOptions,
+> = ParseTReturn<RestKey, Res, TOpt> extends RestKey
+  ? RestKey extends `${string}${_KeySeparator}${infer Leaf}`
+    ? ParseTReturn<Leaf, Res, TOpt>
+    : ParseTReturn<RestKey, Res, TOpt>
+  : ParseTReturn<RestKey, Res, TOpt>;
+
 export type TFunctionReturn<
   Ns extends Namespace,
   Key,
@@ -335,7 +340,7 @@ export type TFunctionReturn<
   ActualKey = KeyWithContext<Key, TOpt>,
 > = $IsResourcesDefined extends true
   ? ActualKey extends `${infer Nsp}${_NsSeparator}${infer RestKey}`
-    ? ParseTReturn<RestKey, Resources[Nsp & keyof Resources], TOpt>
+    ? _ParseTReturnWithNsFallback<RestKey, Resources[Nsp & keyof Resources], TOpt>
     : $FirstNamespace<ActualNS> extends infer PrimaryNS
       ? [PrimaryNS] extends [keyof Resources]
         ? [_PrimaryParse<ActualKey, PrimaryNS & keyof Resources, TOpt>] extends [never]
