@@ -1,0 +1,413 @@
+diff --git a/i18next.js b/i18next.js
+index 2305a8b..c0746ad 100644
+--- a/i18next.js
++++ b/i18next.js
+@@ -303,6 +303,60 @@
+     }
+   }
+ 
++  class ResourceManager {
++    constructor(data, options) {
++      this.data = data;
++      this.options = options;
++    }
++    _parsePath(lng, ns) {
++      let path;
++      let namespace = ns;
++      if (lng.includes('.')) {
++        path = lng.split('.');
++        namespace = path[1];
++      } else {
++        path = [lng, ns];
++      }
++      return { path, namespace };
++    }
++    addBundle(lng, ns, resources, deep, overwrite, options = { silent: false, skipCopy: false }) {
++      const { path, namespace } = this._parsePath(lng, ns);
++      if (lng.includes('.')) {
++        deep = resources;
++        resources = ns;
++      }
++      if (this.options.addNamespaces) {
++        this.options.addNamespaces(namespace);
++      }
++      let pack = getPath(this.data, path) || {};
++      if (!options.skipCopy) resources = JSON.parse(JSON.stringify(resources));
++      if (deep) {
++        deepExtend(pack, resources, overwrite);
++      } else {
++        pack = {
++          ...pack,
++          ...resources
++        };
++      }
++      setPath(this.data, path, pack);
++      if (!options.silent && this.options.emit) {
++        this.options.emit('added', lng, namespace, resources);
++      }
++    }
++    removeBundle(lng, ns) {
++      const { namespace } = this._parsePath(lng, ns);
++      if (this.options.hasResourceBundle && this.options.hasResourceBundle(lng, namespace)) {
++        delete this.data[lng][namespace];
++      }
++      if (this.options.removeNamespaces) {
++        this.options.removeNamespaces(namespace);
++      }
++      if (this.options.emit) {
++        this.options.emit('removed', lng, namespace);
++      }
++    }
++  }
++
+   class ResourceStore extends EventEmitter {
+     constructor(data, options = {
+       ns: ['translation'],
+@@ -317,6 +371,12 @@
+       if (this.options.ignoreJSONStructure === undefined) {
+         this.options.ignoreJSONStructure = true;
+       }
++      this.resourceManager = new ResourceManager(this.data, {
++        addNamespaces: (ns) => this.addNamespaces(ns),
++        removeNamespaces: (ns) => this.removeNamespaces(ns),
++        hasResourceBundle: (lng, ns) => this.hasResourceBundle(lng, ns),
++        emit: (event, ...args) => this.emit(event, ...args)
++      });
+     }
+     addNamespaces(ns) {
+       if (!this.options.ns.includes(ns)) {
+@@ -385,33 +445,10 @@
+       silent: false,
+       skipCopy: false
+     }) {
+-      let path = [lng, ns];
+-      if (lng.includes('.')) {
+-        path = lng.split('.');
+-        deep = resources;
+-        resources = ns;
+-        ns = path[1];
+-      }
+-      this.addNamespaces(ns);
+-      let pack = getPath(this.data, path) || {};
+-      if (!options.skipCopy) resources = JSON.parse(JSON.stringify(resources));
+-      if (deep) {
+-        deepExtend(pack, resources, overwrite);
+-      } else {
+-        pack = {
+-          ...pack,
+-          ...resources
+-        };
+-      }
+-      setPath(this.data, path, pack);
+-      if (!options.silent) this.emit('added', lng, ns, resources);
++      this.resourceManager.addBundle(lng, ns, resources, deep, overwrite, options);
+     }
+     removeResourceBundle(lng, ns) {
+-      if (this.hasResourceBundle(lng, ns)) {
+-        delete this.data[lng][ns];
+-      }
+-      this.removeNamespaces(ns);
+-      this.emit('removed', lng, ns);
++      this.resourceManager.removeBundle(lng, ns);
+     }
+     hasResourceBundle(lng, ns) {
+       return this.getResource(lng, ns) !== undefined;
+diff --git a/run_test.cjs b/run_test.cjs
+new file mode 100644
+index 0000000..9eba11a
+--- /dev/null
++++ b/run_test.cjs
+@@ -0,0 +1,15 @@
++#!/usr/bin/env node
++import { execSync } from 'child_process';
++import { writeFileSync } from 'fs';
++
++try {
++  const result = execSync(
++    'node node_modules/vitest/vitest.mjs run --project runtime resourceStore',
++    { cwd: '/app/i18next', encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
++  );
++  console.log('STDOUT:', result);
++} catch (e) {
++  console.log('STDOUT:', e.stdout);
++  console.log('STDERR:', e.stderr);
++  console.log('EXIT CODE:', e.status);
++}
+diff --git a/src/ResourceManager.js b/src/ResourceManager.js
+new file mode 100644
+index 0000000..9eec3eb
+--- /dev/null
++++ b/src/ResourceManager.js
+@@ -0,0 +1,71 @@
++import { getPath, setPath, deepExtend, isString } from './utils.js';
++
++class ResourceManager {
++  constructor(data, options) {
++    this.data = data;
++    this.options = options;
++  }
++
++  _parsePath(lng, ns) {
++    let path;
++    let namespace = ns;
++
++    if (lng.includes('.')) {
++      path = lng.split('.');
++      namespace = path[1];
++    } else {
++      path = [lng, ns];
++    }
++
++    return { path, namespace };
++  }
++
++  addBundle(lng, ns, resources, deep, overwrite, options = { silent: false, skipCopy: false }) {
++    const { path, namespace } = this._parsePath(lng, ns);
++
++    if (lng.includes('.')) {
++      deep = resources;
++      resources = ns;
++    }
++
++    if (this.options.addNamespaces) {
++      this.options.addNamespaces(namespace);
++    }
++
++    let pack = getPath(this.data, path) || {};
++
++    if (!options.skipCopy) {
++      resources = JSON.parse(JSON.stringify(resources));
++    }
++
++    if (deep) {
++      deepExtend(pack, resources, overwrite);
++    } else {
++      pack = { ...pack, ...resources };
++    }
++
++    setPath(this.data, path, pack);
++
++    if (!options.silent && this.options.emit) {
++      this.options.emit('added', lng, namespace, resources);
++    }
++  }
++
++  removeBundle(lng, ns) {
++    const { namespace } = this._parsePath(lng, ns);
++
++    if (this.options.hasResourceBundle && this.options.hasResourceBundle(lng, namespace)) {
++      delete this.data[lng][namespace];
++    }
++
++    if (this.options.removeNamespaces) {
++      this.options.removeNamespaces(namespace);
++    }
++
++    if (this.options.emit) {
++      this.options.emit('removed', lng, namespace);
++    }
++  }
++}
++
++export default ResourceManager;
+diff --git a/src/resourceStore.js b/src/resourceStore.js
+new file mode 100644
+index 0000000..37ff0ef
+--- /dev/null
++++ b/src/resourceStore.js
+@@ -0,0 +1,142 @@
++import EventEmitter from './EventEmitter.js';
++import { getPath, deepFind, setPath, isString } from './utils.js';
++import ResourceManager from './ResourceManager.js';
++
++class ResourceStore extends EventEmitter {
++  constructor(data, options = { ns: ['translation'], defaultNS: 'translation' }) {
++    super();
++
++    this.data = data || {};
++    this.options = options;
++    if (this.options.keySeparator === undefined) {
++      this.options.keySeparator = '.';
++    }
++    if (this.options.ignoreJSONStructure === undefined) {
++      this.options.ignoreJSONStructure = true;
++    }
++
++    this.resourceManager = new ResourceManager(this.data, {
++      addNamespaces: (ns) => this.addNamespaces(ns),
++      removeNamespaces: (ns) => this.removeNamespaces(ns),
++      hasResourceBundle: (lng, ns) => this.hasResourceBundle(lng, ns),
++      emit: (event, ...args) => this.emit(event, ...args),
++    });
++  }
++
++  addNamespaces(ns) {
++    if (!this.options.ns.includes(ns)) {
++      this.options.ns.push(ns);
++    }
++  }
++
++  removeNamespaces(ns) {
++    const index = this.options.ns.indexOf(ns);
++    if (index > -1) {
++      this.options.ns.splice(index, 1);
++    }
++  }
++
++  getResource(lng, ns, key, options = {}) {
++    const keySeparator =
++      options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
++
++    const ignoreJSONStructure =
++      options.ignoreJSONStructure !== undefined
++        ? options.ignoreJSONStructure
++        : this.options.ignoreJSONStructure;
++
++    let path;
++    if (lng.includes('.')) {
++      path = lng.split('.');
++    } else {
++      path = [lng, ns];
++      if (key) {
++        if (Array.isArray(key)) {
++          path.push(...key);
++        } else if (isString(key) && keySeparator) {
++          path.push(...key.split(keySeparator));
++        } else {
++          path.push(key);
++        }
++      }
++    }
++
++    const result = getPath(this.data, path);
++    if (!result && !ns && !key && lng.includes('.')) {
++      lng = path[0];
++      ns = path[1];
++      key = path.slice(2).join('.');
++    }
++    if (result || !ignoreJSONStructure || !isString(key)) return result;
++
++    return deepFind(this.data?.[lng]?.[ns], key, keySeparator);
++  }
++
++  addResource(lng, ns, key, value, options = { silent: false }) {
++    const keySeparator =
++      options.keySeparator !== undefined ? options.keySeparator : this.options.keySeparator;
++
++    let path = [lng, ns];
++    if (key) path = path.concat(keySeparator ? key.split(keySeparator) : key);
++
++    if (lng.includes('.')) {
++      path = lng.split('.');
++      value = ns;
++      ns = path[1];
++    }
++
++    this.addNamespaces(ns);
++
++    setPath(this.data, path, value);
++
++    if (!options.silent) this.emit('added', lng, ns, key, value);
++  }
++
++  addResources(lng, ns, resources, options = { silent: false }) {
++    for (const m in resources) {
++      if (isString(resources[m]) || Array.isArray(resources[m]))
++        this.addResource(lng, ns, m, resources[m], { silent: true });
++    }
++    if (!options.silent) this.emit('added', lng, ns, resources);
++  }
++
++  addResourceBundle(
++    lng,
++    ns,
++    resources,
++    deep,
++    overwrite,
++    options = { silent: false, skipCopy: false },
++  ) {
++    this.resourceManager.addBundle(lng, ns, resources, deep, overwrite, options);
++  }
++
++  removeResourceBundle(lng, ns) {
++    this.resourceManager.removeBundle(lng, ns);
++  }
++
++  hasResourceBundle(lng, ns) {
++    return this.getResource(lng, ns) !== undefined;
++  }
++
++  getResourceBundle(lng, ns) {
++    if (!ns) ns = this.options.defaultNS;
++    return this.getResource(lng, ns);
++  }
++
++  getDataByLanguage(lng) {
++    return this.data[lng];
++  }
++
++  hasLanguageSomeTranslations(lng) {
++    const data = this.getDataByLanguage(lng);
++    const n = (data && Object.keys(data)) || [];
++    return !!n.find((v) => data[v] && Object.keys(data[v]).length > 0);
++  }
++
++  toJSON() {
++    return this.data;
++  }
++}
++
++export default ResourceStore;
+diff --git a/test_manual.mjs b/test_manual.mjs
+new file mode 100644
+index 0000000..a1d3536
+--- /dev/null
++++ b/test_manual.mjs
+@@ -0,0 +1,47 @@
++import ResourceStore from './src/ResourceStore.js';
++
++const rs = new ResourceStore({ en: { translation: { test: 'test' } } });
++
++console.log('=== Test 1: addResourceBundle basic ===');
++rs.addResourceBundle('en', 'translation', { something: 'deeper' });
++const result1 = rs.getResource('en', 'translation');
++console.log('Result:', JSON.stringify(result1));
++console.log('Pass:', result1.something === 'deeper' && result1.test === 'test');
++
++console.log('\n=== Test 2: addResourceBundle with dotted notation ===');
++rs.addResourceBundle('en.translation', { something1: 'deeper1' });
++const result2 = rs.getResource('en.translation');
++console.log('Result:', JSON.stringify(result2));
++console.log('Pass:', result2.something === 'deeper' && result2.something1 === 'deeper1' && result2.test === 'test');
++
++console.log('\n=== Test 3: removeResourceBundle ===');
++const rs2 = new ResourceStore({ en: { translation: { test: 'test' } } });
++rs2.removeResourceBundle('en', 'translation');
++const result3 = rs2.getResourceBundle('en', 'translation');
++console.log('After remove:', result3);
++console.log('Pass:', result3 === undefined || result3 === false);
++
++console.log('\n=== Test 4: addResourceBundle with deep merge ===');
++const rs3 = new ResourceStore({ en: { translation: { test: 'test' } } });
++rs3.addResourceBundle('en', 'translation', { nested: { key: 'value' } }, true, true);
++const result4 = rs3.getResource('en', 'translation');
++console.log('Result:', JSON.stringify(result4));
++console.log('Pass:', result4.nested.key === 'value' && result4.test === 'test');
++
++console.log('\n=== Test 5: addResourceBundle with silent option ===');
++let eventEmitted = false;
++const rs4 = new ResourceStore({ en: { translation: { test: 'test' } } });
++rs4.on('added', () => { eventEmitted = true; });
++rs4.addResourceBundle('fr', 'translation', { hi: 'salut' }, true, true, { silent: true });
++console.log('Event emitted:', eventEmitted);
++console.log('Pass:', !eventEmitted);
++
++console.log('\n=== Test 6: removeResourceBundle emits removed event ===');
++let removedEmitted = false;
++const rs5 = new ResourceStore({ en: { translation: { test: 'test' } } });
++rs5.on('removed', () => { removedEmitted = true; });
++rs5.removeResourceBundle('en', 'translation');
++console.log('Removed event emitted:', removedEmitted);
++console.log('Pass:', removedEmitted);
++
++console.log('\n=== All tests completed ===');
