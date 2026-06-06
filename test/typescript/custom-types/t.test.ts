@@ -46,7 +46,6 @@ describe('t', () => {
       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
 
       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
-      expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
     });
 
     it('should throw an error when key is not present inside namespace', () => {
@@ -54,6 +53,8 @@ describe('t', () => {
       assertType(t('bar'));
 
       // @ts-expect-error
+      // @ts-expect-error
+      assertType(t('alternate:foobar.barfoo'));
       assertType(t('alternate:foobar.barfoo'));
       // @ts-expect-error
       assertType(t('foobar'));

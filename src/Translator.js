@@ -491,79 +491,80 @@ class Translator extends EventEmitter {
         ? opt.lngs
         : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
 
+      const keySeparator = opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
+      let parsedKeys = [key];
+      if (keySeparator !== false && key.includes(keySeparator)) {
+        const parts = key.split(keySeparator);
+        let current = parts;
+        while (current.length > 1) {
+          current = current.slice(1);
+          parsedKeys.push(current.join(keySeparator));
+        }
+      }
+
       namespaces.forEach((ns) => {
         if (this.isValidLookup(found)) return;
         usedNS = ns;
-
-        if (
-          !this.checkedLoadedFor[`${codes[0]}-${ns}`] &&
-          this.utils?.hasLoadedNamespace &&
-          !this.utils?.hasLoadedNamespace(usedNS)
-        ) {
-          this.checkedLoadedFor[`${codes[0]}-${ns}`] = true;
-          this.logger.warn(
-            `key "${usedKey}" for languages "${codes.join(
-              ', ',
-            )}" won't get resolved as namespace "${usedNS}" was not yet loaded`,
-            'This means something IS WRONG in your setup. You access the t function before i18next.init / i18next.loadNamespace / i18next.changeLanguage was done. Wait for the callback or Promise to resolve before accessing it!!!',
-          );
-        }
 
         codes.forEach((code) => {
           if (this.isValidLookup(found)) return;
           usedLng = code;
 
-          const finalKeys = [key];
+          parsedKeys.forEach((parsedKey) => {
+            if (this.isValidLookup(found)) return;
 
-          if (this.i18nFormat?.addLookupKeys) {
-            this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
-          } else {
-            let pluralSuffix;
-            if (needsPluralHandling)
-              pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
-            const zeroSuffix = `${this.options.pluralSeparator}zero`;
-            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
-            // get key for plural if needed
-            if (needsPluralHandling) {
-              if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
-                finalKeys.push(
-                  key + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
-                );
-              }
-              finalKeys.push(key + pluralSuffix);
-              if (needsZeroSuffixLookup) {
-                finalKeys.push(key + zeroSuffix);
-              }
-            }
+            const finalKeys = [parsedKey];
 
-            // get key for context if needed
-            if (needsContextHandling) {
-              const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
-              finalKeys.push(contextKey);
-
-              // get key for context + plural if needed
+            if (this.i18nFormat?.addLookupKeys) {
+              this.i18nFormat.addLookupKeys(finalKeys, parsedKey, code, ns, opt);
+            } else {
+              let pluralSuffix;
+              if (needsPluralHandling)
+                pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
+              const zeroSuffix = `${this.options.pluralSeparator}zero`;
+              const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+              // get key for plural if needed
               if (needsPluralHandling) {
                 if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
                   finalKeys.push(
-                    contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                    parsedKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
                   );
                 }
-                finalKeys.push(contextKey + pluralSuffix);
+                finalKeys.push(parsedKey + pluralSuffix);
                 if (needsZeroSuffixLookup) {
-                  finalKeys.push(contextKey + zeroSuffix);
+                  finalKeys.push(parsedKey + zeroSuffix);
+                }
+              }
+
+              // get key for context if needed
+              if (needsContextHandling) {
+                const contextKey = `${parsedKey}${this.options.contextSeparator || '_'}${opt.context}`;
+                finalKeys.push(contextKey);
+
+                // get key for context + plural if needed
+                if (needsPluralHandling) {
+                  if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                    finalKeys.push(
+                      contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                    );
+                  }
+                  finalKeys.push(contextKey + pluralSuffix);
+                  if (needsZeroSuffixLookup) {
+                    finalKeys.push(contextKey + zeroSuffix);
+                  }
                 }
               }
             }
-          }
 
-          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
-          let possibleKey;
-          while ((possibleKey = finalKeys.pop())) {
-            if (!this.isValidLookup(found)) {
-              exactUsedKey = possibleKey;
-              found = this.getResource(code, ns, possibleKey, opt);
+            // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+            let possibleKey;
+            while ((possibleKey = finalKeys.pop())) {
+              if (!this.isValidLookup(found)) {
+                exactUsedKey = possibleKey;
+                found = this.getResource(code, ns, possibleKey, opt);
+              }
             }
-          }
+          });
         });
       });
     });
@@ -592,11 +593,6 @@ class Translator extends EventEmitter {
       'context',
       'replace',
       'lng',
-      'lngs',
-      'fallbackLng',
-      'ns',
-      'keySeparator',
-      'nsSeparator',
       'returnObjects',
       'returnDetails',
       'joinArrays',

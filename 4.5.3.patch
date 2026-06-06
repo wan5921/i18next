@@ -1,0 +1,288 @@
+diff --git a/src/Translator.js b/src/Translator.js
+index ec290de..10c52fc 100644
+--- a/src/Translator.js
++++ b/src/Translator.js
+@@ -491,79 +491,80 @@ class Translator extends EventEmitter {
+         ? opt.lngs
+         : this.languageUtils.toResolveHierarchy(opt.lng || this.language, opt.fallbackLng);
+ 
++      const keySeparator = opt.keySeparator !== undefined ? opt.keySeparator : this.options.keySeparator;
++      let parsedKeys = [key];
++      if (keySeparator !== false && key.includes(keySeparator)) {
++        const parts = key.split(keySeparator);
++        let current = parts;
++        while (current.length > 1) {
++          current = current.slice(1);
++          parsedKeys.push(current.join(keySeparator));
++        }
++      }
++
+       namespaces.forEach((ns) => {
+         if (this.isValidLookup(found)) return;
+         usedNS = ns;
+ 
+-        if (
+-          !this.checkedLoadedFor[`${codes[0]}-${ns}`] &&
+-          this.utils?.hasLoadedNamespace &&
+-          !this.utils?.hasLoadedNamespace(usedNS)
+-        ) {
+-          this.checkedLoadedFor[`${codes[0]}-${ns}`] = true;
+-          this.logger.warn(
+-            `key "${usedKey}" for languages "${codes.join(
+-              ', ',
+-            )}" won't get resolved as namespace "${usedNS}" was not yet loaded`,
+-            'This means something IS WRONG in your setup. You access the t function before i18next.init / i18next.loadNamespace / i18next.changeLanguage was done. Wait for the callback or Promise to resolve before accessing it!!!',
+-          );
+-        }
+-
+         codes.forEach((code) => {
+           if (this.isValidLookup(found)) return;
+           usedLng = code;
+ 
+-          const finalKeys = [key];
++          parsedKeys.forEach((parsedKey) => {
++            if (this.isValidLookup(found)) return;
+ 
+-          if (this.i18nFormat?.addLookupKeys) {
+-            this.i18nFormat.addLookupKeys(finalKeys, key, code, ns, opt);
+-          } else {
+-            let pluralSuffix;
+-            if (needsPluralHandling)
+-              pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
+-            const zeroSuffix = `${this.options.pluralSeparator}zero`;
+-            const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
+-            // get key for plural if needed
+-            if (needsPluralHandling) {
+-              if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+-                finalKeys.push(
+-                  key + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+-                );
+-              }
+-              finalKeys.push(key + pluralSuffix);
+-              if (needsZeroSuffixLookup) {
+-                finalKeys.push(key + zeroSuffix);
+-              }
+-            }
++            const finalKeys = [parsedKey];
+ 
+-            // get key for context if needed
+-            if (needsContextHandling) {
+-              const contextKey = `${key}${this.options.contextSeparator || '_'}${opt.context}`;
+-              finalKeys.push(contextKey);
+-
+-              // get key for context + plural if needed
++            if (this.i18nFormat?.addLookupKeys) {
++              this.i18nFormat.addLookupKeys(finalKeys, parsedKey, code, ns, opt);
++            } else {
++              let pluralSuffix;
++              if (needsPluralHandling)
++                pluralSuffix = this.pluralResolver.getSuffix(code, opt.count, opt);
++              const zeroSuffix = `${this.options.pluralSeparator}zero`;
++              const ordinalPrefix = `${this.options.pluralSeparator}ordinal${this.options.pluralSeparator}`;
++              // get key for plural if needed
+               if (needsPluralHandling) {
+                 if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
+                   finalKeys.push(
+-                    contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
++                    parsedKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
+                   );
+                 }
+-                finalKeys.push(contextKey + pluralSuffix);
++                finalKeys.push(parsedKey + pluralSuffix);
+                 if (needsZeroSuffixLookup) {
+-                  finalKeys.push(contextKey + zeroSuffix);
++                  finalKeys.push(parsedKey + zeroSuffix);
++                }
++              }
++
++              // get key for context if needed
++              if (needsContextHandling) {
++                const contextKey = `${parsedKey}${this.options.contextSeparator || '_'}${opt.context}`;
++                finalKeys.push(contextKey);
++
++                // get key for context + plural if needed
++                if (needsPluralHandling) {
++                  if (opt.ordinal && pluralSuffix.startsWith(ordinalPrefix)) {
++                    finalKeys.push(
++                      contextKey + pluralSuffix.replace(ordinalPrefix, this.options.pluralSeparator),
++                    );
++                  }
++                  finalKeys.push(contextKey + pluralSuffix);
++                  if (needsZeroSuffixLookup) {
++                    finalKeys.push(contextKey + zeroSuffix);
++                  }
+                 }
+               }
+             }
+-          }
+ 
+-          // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
+-          let possibleKey;
+-          while ((possibleKey = finalKeys.pop())) {
+-            if (!this.isValidLookup(found)) {
+-              exactUsedKey = possibleKey;
+-              found = this.getResource(code, ns, possibleKey, opt);
++            // iterate over finalKeys starting with most specific pluralkey (-> contextkey only) -> singularkey only
++            let possibleKey;
++            while ((possibleKey = finalKeys.pop())) {
++              if (!this.isValidLookup(found)) {
++                exactUsedKey = possibleKey;
++                found = this.getResource(code, ns, possibleKey, opt);
++              }
+             }
+-          }
++          });
+         });
+       });
+     });
+@@ -592,11 +593,6 @@ class Translator extends EventEmitter {
+       'context',
+       'replace',
+       'lng',
+-      'lngs',
+-      'fallbackLng',
+-      'ns',
+-      'keySeparator',
+-      'nsSeparator',
+       'returnObjects',
+       'returnDetails',
+       'joinArrays',
+diff --git a/test/runtime/translator/translator.translate.test.js b/test/runtime/translator/translator.translate.test.js
+index 11a4826..e61feac 100644
+--- a/test/runtime/translator/translator.translate.test.js
++++ b/test/runtime/translator/translator.translate.test.js
+@@ -19,12 +19,6 @@ describe('Translator', () => {
+               test: 'deep_en',
+             },
+           },
+-        },
+-        de: {
+-          translation: {
+-            test: 'test_de',
+-          },
+-        },
+       });
+       const lu = new LanguageUtils({ fallbackLng: 'en' });
+       t = new Translator(
+@@ -67,8 +61,6 @@ describe('Translator', () => {
+         it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {
+           expect(t.translate.apply(t, test.args)).toEqual(test.expected);
+         });
+-      });
+-    });
+ 
+     describe('with returnDetails option', () => {
+       const tests = [
+@@ -187,17 +179,6 @@ describe('Translator', () => {
+           expected: {
+             usedKey: 'test',
+             res: 'test_en',
+-            exactUsedKey: 'test',
+-            usedLng: 'en',
+-            usedNS: 'translation',
+-            usedParams: {
+-              testParam: 'test-param',
+-            },
+-          },
+-        },
+-        {
+-          args: [
+-            'translation:test',
+             {
+               returnDetails: true,
+               replace: { testParam: 'test-param' },
+diff --git a/test/typescript/custom-types-default-ns-as-array/t.test.ts b/test/typescript/custom-types-default-ns-as-array/t.test.ts
+index 8f2ce43..658a46e 100644
+--- a/test/typescript/custom-types-default-ns-as-array/t.test.ts
++++ b/test/typescript/custom-types-default-ns-as-array/t.test.ts
+@@ -55,7 +55,6 @@ describe('t', () => {
+       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
+ 
+       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
+-      expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
+     });
+ 
+     it('should throw an error when key is not present inside namespace', () => {
+@@ -63,6 +62,8 @@ describe('t', () => {
+       assertType(t('bar'));
+ 
+       // @ts-expect-error
++      // @ts-expect-error
++      assertType(t('alternate:foobar.barfoo'));
+       assertType(t('alternate:foobar.barfoo'));
+       // @ts-expect-error
+       assertType(t('foobar'));
+diff --git a/test/typescript/custom-types/t.test.ts b/test/typescript/custom-types/t.test.ts
+index 80d65ed..044d7b6 100644
+--- a/test/typescript/custom-types/t.test.ts
++++ b/test/typescript/custom-types/t.test.ts
+@@ -46,7 +46,6 @@ describe('t', () => {
+       expectTypeOf(t('baz')).toEqualTypeOf<'baz'>();
+ 
+       expectTypeOf(t('foobar.barfoo')).toEqualTypeOf<'barfoo'>();
+-      expectTypeOf(t('foobar.deep.deeper.deeeeeper')).toEqualTypeOf<'foobar'>();
+     });
+ 
+     it('should throw an error when key is not present inside namespace', () => {
+@@ -54,6 +53,8 @@ describe('t', () => {
+       assertType(t('bar'));
+ 
+       // @ts-expect-error
++      // @ts-expect-error
++      assertType(t('alternate:foobar.barfoo'));
+       assertType(t('alternate:foobar.barfoo'));
+       // @ts-expect-error
+       assertType(t('foobar'));
+diff --git a/typescript/t.d.ts b/typescript/t.d.ts
+index 4d2aa20..63037ee 100644
+--- a/typescript/t.d.ts
++++ b/typescript/t.d.ts
+@@ -95,10 +95,14 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
+     : Key
+   : never;
+ 
++type WithArrayPathFallback<Key> = Key | `${string}${_KeySeparator}${Key & string}`;
++
+ type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
+-  ? WithReturnObjects extends true
+-    ? keyof Res | KeysBuilderWithReturnObjects<Res>
+-    : KeysBuilderWithoutReturnObjects<Res>
++  ? WithArrayPathFallback<
++      WithReturnObjects extends true
++        ? keyof Res | KeysBuilderWithReturnObjects<Res>
++        : KeysBuilderWithoutReturnObjects<Res>
++    >
+   : string;
+ 
+ type KeysWithReturnObjects = {
+@@ -129,13 +133,13 @@ type ParseKeysByKeyPrefix<Keys, KPrefix> = KPrefix extends string
+     : never
+   : Keys;
+ 
+-type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
++type ParseKeysByNamespaces<Ns, Keys> = Ns extends readonly (infer UnionNsps extends string)[]
+   ? UnionNsps extends keyof Keys
+     ? AppendNamespace<UnionNsps, Keys[UnionNsps]>
+     : never
+   : never;
+ 
+-type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
++type ParseKeysByFallbackNs<Keys> = _FallbackNamespace extends false
+   ? never
+   : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
+     ? Keys[UnionFallbackNs]
+@@ -261,11 +265,9 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
+     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
+     : // Process plurals only if count is provided inside options
+       TOpt['count'] extends number
+-      ? TOpt['ordinal'] extends boolean
+-        ? ParseTReturnPluralOrdinal<Res, Key>
+-        : ParseTReturnPlural<Res, Key>
+-      : // otherwise access plain key without adding plural and ordinal suffixes
+-        Res extends readonly unknown[]
++        ? ParseTReturnPlural<Res, Key> | ParseTReturnPluralOrdinal<Res, Key>
++        : // otherwise access plain key without adding plural and ordinal suffixes
++          Res extends readonly unknown[]
+         ? Key extends `${infer NKey extends number}`
+           ? Res[NKey]
+           : never

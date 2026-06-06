@@ -95,10 +95,14 @@ type KeysBuilderWithoutReturnObjects<Res, Key = keyof $OmitArrayKeys<Res>> = Key
     : Key
   : never;
 
+type WithArrayPathFallback<Key> = Key | `${string}${_KeySeparator}${Key & string}`;
+
 type KeysBuilder<Res, WithReturnObjects> = $IsResourcesDefined extends true
-  ? WithReturnObjects extends true
-    ? keyof Res | KeysBuilderWithReturnObjects<Res>
-    : KeysBuilderWithoutReturnObjects<Res>
+  ? WithArrayPathFallback<
+      WithReturnObjects extends true
+        ? keyof Res | KeysBuilderWithReturnObjects<Res>
+        : KeysBuilderWithoutReturnObjects<Res>
+    >
   : string;
 
 type KeysWithReturnObjects = {
@@ -129,13 +133,13 @@ type ParseKeysByKeyPrefix<Keys, KPrefix> = KPrefix extends string
     : never
   : Keys;
 
-type ParseKeysByNamespaces<Ns extends Namespace, Keys> = Ns extends readonly (infer UnionNsps)[]
+type ParseKeysByNamespaces<Ns, Keys> = Ns extends readonly (infer UnionNsps extends string)[]
   ? UnionNsps extends keyof Keys
     ? AppendNamespace<UnionNsps, Keys[UnionNsps]>
     : never
   : never;
 
-type ParseKeysByFallbackNs<Keys extends $Dictionary> = _FallbackNamespace extends false
+type ParseKeysByFallbackNs<Keys> = _FallbackNamespace extends false
   ? never
   : _FallbackNamespace extends (infer UnionFallbackNs extends string)[]
     ? Keys[UnionFallbackNs]
@@ -261,11 +265,9 @@ type ParseTReturn<Key, Res, TOpt extends TOptions = {}> = ParseTReturnWithFallba
     ? ParseTReturn<RestKey, Res[K1 & keyof Res], TOpt>
     : // Process plurals only if count is provided inside options
       TOpt['count'] extends number
-      ? TOpt['ordinal'] extends boolean
-        ? ParseTReturnPluralOrdinal<Res, Key>
-        : ParseTReturnPlural<Res, Key>
-      : // otherwise access plain key without adding plural and ordinal suffixes
-        Res extends readonly unknown[]
+        ? ParseTReturnPlural<Res, Key> | ParseTReturnPluralOrdinal<Res, Key>
+        : // otherwise access plain key without adding plural and ordinal suffixes
+          Res extends readonly unknown[]
         ? Key extends `${infer NKey extends number}`
           ? Res[NKey]
           : never

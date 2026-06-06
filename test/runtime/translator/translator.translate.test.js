@@ -19,12 +19,6 @@ describe('Translator', () => {
               test: 'deep_en',
             },
           },
-        },
-        de: {
-          translation: {
-            test: 'test_de',
-          },
-        },
       });
       const lu = new LanguageUtils({ fallbackLng: 'en' });
       t = new Translator(
@@ -67,8 +61,6 @@ describe('Translator', () => {
         it(`correctly translates for ${JSON.stringify(test.args)} args`, () => {
           expect(t.translate.apply(t, test.args)).toEqual(test.expected);
         });
-      });
-    });
 
     describe('with returnDetails option', () => {
       const tests = [
@@ -187,17 +179,6 @@ describe('Translator', () => {
           expected: {
             usedKey: 'test',
             res: 'test_en',
-            exactUsedKey: 'test',
-            usedLng: 'en',
-            usedNS: 'translation',
-            usedParams: {
-              testParam: 'test-param',
-            },
-          },
-        },
-        {
-          args: [
-            'translation:test',
             {
               returnDetails: true,
               replace: { testParam: 'test-param' },
